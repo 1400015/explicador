@@ -39,6 +39,7 @@ function getClientForKey(apiKey: string): GoogleGenAI {
 }
 
 const requestsByIp = new Map<string, number[]>();
+const MAX_TRACKED_IPS = 1000;
 
 function isRateLimited(ip: string): boolean {
   const now = Date.now();
@@ -51,6 +52,15 @@ function isRateLimited(ip: string): boolean {
   }
   timestamps.push(now);
   requestsByIp.set(ip, timestamps);
+
+  // Limpa IPs inativos para o Map não crescer sem limite.
+  if (requestsByIp.size > MAX_TRACKED_IPS) {
+    for (const [key, ts] of requestsByIp) {
+      if (ts.every((t) => now - t >= RATE_LIMIT_WINDOW_MS)) {
+        requestsByIp.delete(key);
+      }
+    }
+  }
   return false;
 }
 
