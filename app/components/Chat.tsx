@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Subject, SUBJECT_LABELS } from "@/lib/gemini";
+import { askTutorDirect, TutorError } from "@/lib/gemini-client";
 import { processImageFiles } from "@/lib/images";
 import { takePhoto } from "@/lib/camera";
-import { isSpeaking, isSpeechRecognitionAvailable, listenOnce, speak, stopSpeaking } from "@/lib/voice";
-import { loadSettings, type AppSettings } from "@/lib/settings";
+import { isSpeechRecognitionAvailable, listenOnce, speak, stopSpeaking } from "@/lib/voice";
+import { isNativeApp, loadSettings, type AppSettings } from "@/lib/settings";
 import Settings from "./Settings";
 import {
   MAX_IMAGES_PER_MESSAGE,
@@ -97,7 +98,12 @@ export default function Chat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [settings, setSettings] = useState<AppSettings>({ mode: "server", apiKey: "", pin: null });
+  const [settings, setSettings] = useState<AppSettings>({
+    mode: "server",
+    apiKey: "",
+    serverUrl: "",
+    pin: null,
+  });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [speakingMessageIndex, setSpeakingMessageIndex] = useState<number | null>(null);
@@ -228,30 +234,76 @@ export default function Chat() {
     setPendingImages([]);
     setLoading(true);
 
+    const native = isNativeApp();
+
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      let reply: string;
+
+      if (native && settings.mode === "direct") {
+        // App Android: o telemóvel fala diretamente com a Gemini (sem servidor).
+        if (!settings.apiKey.trim()) {
+          setError("Guarda a tua chave API nas Definições (⚙️) para a app funcionar.");
+          persistMessages(messages);
+          return;
+        }
+        reply = await askTutorDirect({
+          apiKey: settings.apiKey.trim(),
           message: text,
-          images,
           history: messages,
           subject,
-          apiKey: settings.mode === "direct" ? settings.apiKey : undefined,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error ?? "Algo deu errado. Tenta de novo?");
+          images,
+        });
+      } else if (native && settings.mode === "server" && settings.serverUrl.trim()) {
+        // App Android + servidor próprio do utilizador.
+        const base = settings.serverUrl.trim().replace(/\/+$/, "");
+        const res = await fetch(`${base}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text, images, history: messages, subject }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error ?? "O servidor não respondeu. Confere o endereço nas Definições.");
+          persistMessages(messages);
+          return;
+        }
+        reply = data.reply;
+      } else if (native && settings.mode === "server") {
+        // App Android sem servidor: explica em vez de ficar em branco.
+        setError(
+          "Esta app não tem servidor ligado. Nas Definições (⚙️), escolhe o modo “Esta app” e guarda a tua chave API — ou indica o endereço de um servidor próprio."
+        );
         persistMessages(messages);
         return;
+      } else {
+        // Web (PWA/navegador): fala com o servidor onde a app está publicada.
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: text,
+            images,
+            history: messages,
+            subject,
+            apiKey: settings.mode === "direct" ? settings.apiKey : undefined,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error ?? "Algo deu errado. Tenta de novo?");
+          persistMessages(messages);
+          return;
+        }
+        reply = data.reply;
       }
 
-      persistMessages([...newMessages, { role: "model", text: data.reply }]);
-    } catch {
-      setError("Não consegui falar com o tutor agora. Verifica sua internet e tenta de novo.");
+      persistMessages([...newMessages, { role: "model", text: reply }]);
+    } catch (err) {
+      setError(
+        err instanceof TutorError
+          ? err.message
+          : "Não consegui falar com o tutor agora. Verifica sua internet e tenta de novo."
+      );
       persistMessages(messages);
     } finally {
       setLoading(false);

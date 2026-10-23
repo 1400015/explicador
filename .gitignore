@@ -50,3 +50,6 @@ out/
 *.keystore
 *.jks
 *.apk
+
+# assinaturas locais do apksigner (não publicar)
+*.idsig

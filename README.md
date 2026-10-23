@@ -2,19 +2,20 @@
 
 Um tutor de estudos com IA (Google Gemini) pensado para estudantes de ~12 anos.
 A IA explica com linguagem simples, usa exemplos do dia a dia, **não dá respostas prontas**
-e guía com perguntas para a criança mesma chegar à solução.
+e guia com perguntas para a criança mesma chegar à solução.
 
 ## Stack
 
-- Next.js 15 (App Router) + TypeScript + Tailwind CSS
+- Next.js (App Router) + TypeScript + Tailwind CSS
 - SDK oficial `@google/genai` — modelo **Gemini 3.8 Flash** (`gemini-3.8-flash`) com
   **raciocínio (thinking level HIGH)** — quotas generosas da Google com preço introdutório
-- **App Android** via Capacitor (`android/`) + **PWA instalável** (manifest + service worker)
+- **App Android** via Capacitor (`android/`) — **funciona sozinha, sem servidor** (interface
+  embutida no APK + modo "Esta app" fala direto com a Gemini)
+- **PWA instalável** (manifest + service worker) para usar no browser
 - **Voz**: botão 🎤 para ditar (reconhecimento de voz nativo no Android, Web Speech API
   no browser) e 🔊 "Ouvir" em cada resposta do tutor (voz do sistema, pt-BR)
-- A chave da API fica **somente no servidor** (API Route) — nunca no navegador
 
-## Como rodar
+## Como rodar (versão web/servidor)
 
 ```bash
 npm install
@@ -37,7 +38,7 @@ O tutor enxerga a imagem e:
 - pede foto mais nítida se a imagem estiver ilegível.
 
 Antes de enviar, cada foto é **redimensionada (máx. 1600 px) e convertida para JPEG no navegador**,
-o que remove metadados EXIF (GPS, câmera, etc.) — mais privacidade para a criança.
+o que remove metadados EXIF (GPS, câmara, etc.) — mais privacidade para a criança.
 O servidor valida tipo, tamanho (máx. 4 MB por foto) e conteúdo base64 de todas as imagens.
 
 ## Secção de Definições ⚙️ (para os pais) — protegida por PIN 🔐
@@ -57,113 +58,127 @@ O PIN **nunca é guardado em texto**: fica como hash SHA-256 com salt aleatório
 
 Dentro das Definições, o pai configura:
 
-- **Modo Servidor (recomendado):** a app fala com o teu computador (Next.js), que usa a
-  chave do `.env.local`. A chave nunca sai do computador.
-- **Modo "Esta app":** a chave API do Gemini é guardada **no próprio telemóvel**
-  (via `@capacitor/preferences` na app; `localStorage` no browser) e enviada em cada
-  pedido. Tem um aviso de segurança e botões **Testar chave** e **Apagar chave**.
-  ⚠️ Se o telemóvel for perdido/roubado, quem o tiver pode usar a tua chave.
+- **Modo "Esta app" (recomendado na app Android):** a app **não precisa de servidor nenhum**.
+  A chave API do Gemini é guardada **no próprio telemóvel** (via `@capacitor/preferences`
+  na app; `localStorage` no browser) e o telemóvel fala **diretamente** com a API do Google.
+  Só precisa de internet. Tem botões **Testar chave** e **Apagar chave**.
+  ⚠️ Se o telemóvel for perdido/roubado, quem o tiver pode usar a tua chave — nesse caso,
+  apaga a chave no aistudio.google.com e cria outra.
+- **Modo Servidor:** a app fala com um servidor teu (Next.js), que usa a chave do
+  `.env.local`. Na app Android, indica-se o endereço do servidor (ex.: `http://192.168.1.42:3000`
+  em casa, ou `https://teu-site.com` publicado). No browser/PWA, usa automaticamente o
+  servidor onde a app está publicada. A chave nunca sai do servidor.
 
-Em ambos os modos, todas as proteções do servidor continuam ativas: rate limit,
-filtros de conteúdo, safety settings do Gemini e limites de tamanho.
+Em todos os modos, todas as proteções continuam ativas: rate limit, filtros de conteúdo,
+safety settings do Gemini, moderação por IA e limites de tamanho.
 
 ## Segurança de idade (adequação a 12 anos) — 4 camadas
 
-1. **System prompt reforçado** (`lib/gemini.ts`): proíbe violência, sexual, ódio, drogas,
+1. **System prompt reforçado** (`lib/prompt.ts`): proíbe violência, sexual, ódio, drogas,
    instruções perigosas; manda recusar com gentileza e redirecionar para os estudos; proíbe
    comportamento de "adulto romântico"; incentiva a falar com um adulto de confiança se em perigo.
 2. **Safety settings do Gemini** no pedido: `SEXUALLY_EXPLICIT` bloqueado a partir de LOW,
    restantes categorias em ONLY_HIGH.
-3. **Filtro de saída no servidor** (`route.ts`): deteta padrões de conteúdo inadequado na
+3. **Filtro de saída** (`lib/safety.ts`): deteta padrões de conteúdo inadequado na
    resposta da IA e substitui por uma resposta segura.
-4. **Moderação por IA** (`route.ts`): uma segunda chamada ao modelo (thinking LOW, máx. 16
+4. **Moderação por IA**: uma segunda chamada ao modelo (thinking LOW, máx. 16
    tokens) julga se o texto é adequado para 12 anos; se não for, é substituído.
+
+A lógica de segurança é **partilhada** entre servidor (`app/api/chat/route.ts`) e app
+(`lib/gemini-client.ts`), pelo que o modo "Esta app" tem as mesmas 4 camadas.
 
 ## Proteções incluídas
 
-- Chave da API no servidor por defeito (proxy via `/api/chat`); modo "app" opcional com aviso
+- Chave da API no servidor por defeito (proxy via `/api/chat`); modo "Esta app" opcional com aviso
 - Validação de formato da chave (padrão `AIza...`) antes de chamar a API
 - Chave guardada no telemóvel nunca aparece no histórico nem é mostrada por defeito
 - **PIN de 4-6 dígitos protege as Definições** (abrir, alterar/apagar chave, alterar PIN)
 - PIN guardado apenas como hash SHA-256 + salt — nunca em texto simples
 - **Voz**: 🎤 ditado (plugin nativo `@capacitor-community/speech-recognition` no Android;
   Web Speech API no browser) e 🔊 leitura de respostas (speechSynthesis, pt-BR)
-- Rate limit: 20 requisições/minuto por IP
+- Rate limit: 20 requisições/minuto (por IP no servidor; local no modo "Esta app")
 - Limite de 1000 caracteres por mensagem, 4 fotos por mensagem e 512 tokens por resposta
-- Validação server-side de imagens (tipo permitido, tamanho, base64 válido)
+- Validação de imagens (tipo permitido, tamanho, base64 válido)
 - Redimensionamento no cliente + remoção de metadados EXIF/GPS
 - Histórico limitado às últimas 20 mensagens
-- Filtro de palavras-chave de temas proibidos na entrada
-- Safety settings do Gemini (ódio, assédio, sexual, perigoso)
-- System prompt que obriga linguagem adequada para 12 anos e proíbe dar "a resposta pronta"
-- Histórico do chat (texto) salvo apenas no `localStorage` do próprio dispositivo
 
 ## App Android 📱
 
-Há **duas formas** de usar no telemóvel:
+A app **funciona sozinha** — instala e abre, sem precisar de computador ligado.
+A interface está **embutida no APK** (export estático em `out/`), e no modo "Esta app"
+o telemóvel fala diretamente com a Gemini (só precisa de internet + chave API guardada).
 
-### Opção 1 — PWA instalável (mais simples, sem APK)
+Os APKs compilados estão na raiz do repositório:
+
+- `tutor-ia-release.apk` — versão final assinada (recomendada)
+- `tutor-ia-debug.apk` — para testar
+
+**Para instalar no telemóvel:**
+
+1. Ativa **"Instalar apps desconhecidas"** (Definições → Segurança) para o browser/ficheiro
+2. Transfere o APK para o telemóvel (USB, email, WhatsApp, etc.) e toca nele para instalar
+3. Abre a app — ela abre direto, sem servidor
+4. Toca em **⚙️ Definições**, escolhe o modo **📱 Esta app**, cola a tua chave API do Gemini
+   (aistudio.google.com/apikey) e guarda. Em 2 minutos está pronto! ✅
+5. (Opcional) Cria um **PIN** para proteger as Definições
+
+**Para recompilar o APK:**
+
+```bash
+npm run android:sync       # build estático (out/) + copia para o projeto Android
+npm run android:apk        # gera android/app/build/outputs/apk/debug/app-debug.apk
+npm run android:apk:release
+```
+
+Para compilar precisas de **JDK 21** e **Android SDK** (ANDROID_HOME). No Android Studio é só
+abrir a pasta `android/` — ele trata de tudo.
+
+> ⚠️ A app Android no modo "Servidor" com endereço `http://...` só funciona na mesma rede
+> Wi-Fi (HTTP local). Fora de casa, publica o servidor com HTTPS (Vercel, Railway, etc.).
+> O modo "Esta app" funciona em qualquer lugar com internet.
+
+### PWA instalável (alternativa sem APK)
 
 1. Corre o servidor acessível na rede Wi-Fi: `npm run dev` (ou `npm run build && npm run start`) com `-H 0.0.0.0`
 2. No telemóvel, abre `http://<ip-do-computador>:3000` no Chrome
 3. Menu → **"Adicionar ao ecrã principal"** — fica com ícone próprio, abre em ecrã inteiro
 
-### Opção 2 — APK nativo (Capacitor)
-
-O projeto Android já está em `android/` e os APKs já compilados estão na raiz:
-
-- `tutor-ia-debug.apk` — para testar (instala direto)
-- `tutor-ia-release.apk` — versão final assinada
-
-**Para instalar no telemóvel:**
-
-1. Ativa **"Instalar apps desconhecidas"** (Definições → Segurança) para o browser/ficheiro
-2. Transfere o APK para o telemóvel (USB, email, etc.) e toca nele para instalar
-3. Abre a app — ela liga ao servidor configurado em `capacitor.config.ts` (`server.url`)
-
-**Importante:** a app carrega a interface a partir do teu servidor Next.js. No telemóvel,
-edita `capacitor.config.ts` e coloca o **IP do teu computador na rede Wi-Fi**:
-
-```ts
-server: { url: "http://192.168.1.42:3000", cleartext: true }
-```
-
-Descobre o IP com `ipconfig` (Windows) ou `ip addr` (Mac/Linux). Depois:
+## Testes
 
 ```bash
-npm run build && npx next export   # ou copia o out/ existente
-npm run android:sync
-npm run android:apk                # gera android/app/build/outputs/apk/debug/app-debug.apk
+npm test    # 38 testes: filtros de segurança, prompt, validações do cliente, PIN
 ```
-
-Para recompilar precisas de **JDK 21** e **Android SDK** (ANDROID_HOME). No Android Studio é só
-abrir a pasta `android/` — ele trata de tudo.
-
-> ⚠️ Como a app usa HTTP na rede local, ela só funciona em Wi-Fi de casa. Para usar fora de casa,
-> publica o servidor com HTTPS (Vercel, Railway, etc.) e troca o `server.url`.
 
 ## Estrutura
 
 ```
 app/
-  api/chat/route.ts    # proxy seguro para o Gemini (rate limit, filtros, limites)
-  components/Chat.tsx  # interface de chat (seleção de matéria, fotos, histórico local)
-  page.tsx             # página principal
+  api/chat/route.ts      # proxy seguro para o Gemini (rate limit, filtros, limites)
+  components/Chat.tsx    # interface de chat (seleção de matéria, fotos, histórico local)
+  components/Settings.tsx# definições (modo, chave, URL do servidor, PIN)
+  page.tsx               # página principal
 lib/
-  gemini.ts            # cliente Gemini + system prompt do tutor
-  images.ts            # processamento de fotos no cliente (redimensiona, remove EXIF)
-  shared.ts            # limites e tipos partilhados (cliente + servidor)
+  prompt.ts              # system prompt do tutor + modelo (partilhado cliente/servidor)
+  safety.ts              # filtros de entrada/saída + moderação (partilhado)
+  gemini.ts              # cliente Gemini do servidor (chave do .env.local)
+  gemini-client.ts       # cliente Gemini direto do telemóvel (modo "Esta app")
+  settings.ts            #Definições (modo, chave, serverUrl, PIN) — Preferences/localStorage
+  pin.ts                 # PIN como hash SHA-256 + salt
+  images.ts              # processamento de fotos no cliente (redimensiona, remove EXIF)
+  camera.ts              # câmara nativa (Capacitor) com fallback web
+  voice.ts               # ditado + leitura de voz
+  shared.ts              # limites e tipos partilhados (cliente + servidor)
 public/
-  manifest.webmanifest # PWA
-  sw.js                # service worker (app shell offline)
-  icons/               # ícones PWA
-android/               # projeto Android (Capacitor)
-capacitor.config.ts    # configuração da app (appId, server.url, splash)
+  manifest.webmanifest   # PWA
+  sw.js                  # service worker (app shell offline)
+  icons/                 # ícones PWA
+android/                 # projeto Android (Capacitor)
+capacitor.config.ts      # configuração da app (appId, webDir=out, splash)
 ```
 
 ## Permissões Android
 
-- `INTERNET` — falar com o servidor/Gemini
+- `INTERNET` — falar com a Gemini (modo "Esta app") ou com o servidor (modo "Servidor")
 - `CAMERA` — botão 📷 para fotografar exercícios (câmara não é obrigatória: a app
   funciona sem ela, só perde o botão de foto direta)
 - `RECORD_AUDIO` — botão 🎤 para ditar perguntas por voz (a app pede a permissão em

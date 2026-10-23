@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAi, buildSystemPrompt, MODEL, THINKING_LEVEL, Subject, SUBJECT_LABELS } from "@/lib/gemini";
 import {
+  containsBlockedContent,
+  outputIsInappropriate,
+  SAFE_FALLBACK,
+  GEMINI_KEY_PATTERN,
+} from "@/lib/safety";
+import {
   ALLOWED_IMAGE_TYPES,
   MAX_HISTORY_MESSAGES,
   MAX_IMAGES_PER_MESSAGE,
@@ -14,12 +20,10 @@ import {
 } from "@/lib/shared";
 import { Content, GoogleGenAI, HarmBlockThreshold, HarmCategory, Part } from "@google/genai";
 
-// Clientes Gemini por chave enviada pela app (modo "direto").
+// Clientes Gemini por chave enviada pela app (modo "servidor" com chave do utilizador).
 // Cache limitado para não acumular clientes em memória.
 const directClients = new Map<string, GoogleGenAI>();
 const MAX_CACHED_CLIENTS = 10;
-
-const GEMINI_KEY_PATTERN = /^AIza[0-9A-Za-z_-]{35}$/;
 
 function getClientForKey(apiKey: string): GoogleGenAI {
   let client = directClients.get(apiKey);
@@ -49,33 +53,6 @@ function isRateLimited(ip: string): boolean {
   requestsByIp.set(ip, timestamps);
   return false;
 }
-
-const BLOCKED_TOPICS = [
-  /\b(como (fazer|criar|montar)\b.{0,40}(bomba|arma|explosivo|drogas? ilegais))/i,
-  /\b(receita de|como sintetizar)\b/i,
-  /\b(conteúdo sexual explícito|pornografia)\b/i,
-];
-
-function containsBlockedContent(text: string): boolean {
-  return BLOCKED_TOPICS.some((pattern) => pattern.test(text));
-}
-
-// Filtro de SAÍDA: deteta conteúdo inadequado para 12 anos na resposta da IA.
-const OUTPUT_BLOCKED_PATTERNS = [
-  /\b(como (fazer|criar|montar)\b.{0,40}(bomba|arma|explosivo|drogas? ilegais))/i,
-  /\b(receita de|como sintetizar)\b/i,
-  /\b(conteúdo sexual explícito|pornografia|como fazer sexo)\b/i,
-  /\b(vou te comer|quero transar|linguagem sexual explícita)/i,
-  /\b(suicid[a-z]*|me matar|como morrer)\b/i,
-  /\b(instruções para (ferir|machucar|matar) alguém)/i,
-];
-
-function outputIsInappropriate(text: string): boolean {
-  return OUTPUT_BLOCKED_PATTERNS.some((pattern) => pattern.test(text));
-}
-
-const SAFE_FALLBACK =
-  "Hmm, essa resposta não ficou boa para a tua idade. Vamos tentar outra coisa? Pensa numa pergunta sobre as tuas matérias! 📚";
 
 // 3.ª camada: a própria IA verifica se a resposta é adequada para 12 anos.
 async function moderationCheck(client: GoogleGenAI, text: string): Promise<boolean> {
@@ -118,7 +95,7 @@ export async function POST(request: NextRequest) {
 
   if (isRateLimited(ip)) {
     return NextResponse.json(
-      { error: "Muitas mensagens por minuto. Aguarde um pouquinho e tente de novo. 😊" },
+      { error: "Muitas mensagens por minuto. Aguarde um pouquinho e tente de novo. 🚊" },
       { status: 429 }
     );
   }
@@ -140,7 +117,7 @@ export async function POST(request: NextRequest) {
 
   let client: GoogleGenAI;
   if (typeof apiKey === "string" && apiKey.length > 0) {
-    // Modo "direto": a app envia a chave guardada no telemóvel.
+    // A app envia a chave guardada no telemóvel (modo "servidor" com chave própria).
     // Todas as proteções abaixo (rate limit, filtros, safety settings) continuam ativas.
     if (!GEMINI_KEY_PATTERN.test(apiKey)) {
       return NextResponse.json(
@@ -286,7 +263,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Erro na API do Gemini:", error);
     return NextResponse.json(
-      { error: "Tive um probleminha para responder. Tenta de novo daqui a pouco? 🙏" },
+      { error: "Tive um probleminha para responder. Tenta de novo daqui a pouco? 🤏" },
       { status: 500 }
     );
   }

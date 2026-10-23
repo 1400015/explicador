@@ -3,18 +3,19 @@
 import { useState } from "react";
 import {
   clearApiKey,
+  isNativeApp,
   saveSettings,
   setPin,
   type AppSettings,
   type TutorMode,
 } from "@/lib/settings";
+import { askTutorDirect } from "@/lib/gemini-client";
 import {
   createPinHash,
   isValidPinFormat,
   verifyPin,
   PIN_MAX_LENGTH,
   PIN_MIN_LENGTH,
-  type PinHash,
 } from "@/lib/pin";
 
 type Props = {
@@ -35,6 +36,7 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
 
   const [mode, setMode] = useState<TutorMode>(settings.mode);
   const [apiKey, setApiKey] = useState(settings.apiKey);
+  const [serverUrl, setServerUrl] = useState(settings.serverUrl);
   const [showKey, setShowKey] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
@@ -92,6 +94,7 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
     const next: AppSettings = {
       mode: apiKey.trim() ? mode : "server",
       apiKey: apiKey.trim(),
+      serverUrl: serverUrl.trim(),
       pin: unlocked.pin,
     };
     await saveSettings(next);
@@ -104,39 +107,64 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
     await clearApiKey();
     setApiKey("");
     setMode("server");
-    const next: AppSettings = { mode: "server", apiKey: "", pin: unlocked.pin };
+    const next: AppSettings = { mode: "server", apiKey: "", serverUrl, pin: unlocked.pin };
     setUnlocked(next);
     setStatus("Chave apagada do telemóvel. 🗑️");
     onSaved(next);
   }
 
   async function handleTest() {
-    const key = apiKey.trim();
-    if (!key) {
-      setStatus("Escreve a chave primeiro.");
+    const native = isNativeApp();
+    if (mode === "direct") {
+      const key = apiKey.trim();
+      if (!key) {
+        setStatus("Escreve a chave primeiro.");
+        return;
+      }
+      setTesting(true);
+      setStatus(null);
+      try {
+        const reply = await askTutorDirect({
+          apiKey: key,
+          message: "Teste de ligação: responde só 'OK' se me estiveres a ouvir.",
+          history: [],
+          subject: "geral",
+          images: [],
+        });
+        setStatus(`Ligação OK! ${reply.slice(0, 80)} ✅`);
+      } catch (err) {
+        setStatus(err instanceof Error ? `Falhou: ${err.message}` : "Falhou: erro desconhecido");
+      } finally {
+        setTesting(false);
+      }
       return;
     }
+
+    if (native && !serverUrl.trim()) {
+      setStatus("No modo Servidor na app Android, indica o endereço do teu servidor (ex.: https://teu-site.com).");
+      return;
+    }
+    const base = native ? serverUrl.trim().replace(/\/+$/, "") : "";
     setTesting(true);
     setStatus(null);
     try {
-      const res = await fetch("/api/chat", {
+      const res = await fetch(`${base}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "Teste de ligação: responde só 'OK' se me estiveres a ouvir.",
           history: [],
           subject: "geral",
-          apiKey: key,
         }),
       });
       const data = await res.json();
       if (res.ok && data.reply) {
-        setStatus("Ligação OK! A chave funciona. ✅");
+        setStatus("Ligação OK! O servidor respondeu. ✅");
       } else {
         setStatus(`Falhou: ${data.error ?? "erro desconhecido"}`);
       }
     } catch {
-      setStatus("Falhou: sem ligação ao servidor. Verifica o Wi-Fi.");
+      setStatus("Falhou: sem ligação ao servidor. Verifica o endereço e a internet.");
     } finally {
       setTesting(false);
     }
@@ -273,7 +301,7 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
             }`}
           >
             <div className="font-semibold text-indigo-900">🖥️ Servidor</div>
-            <div className="text-xs text-gray-500">A chave fica no computador (mais seguro)</div>
+            <div className="text-xs text-gray-500">A app fala com um servidor teu</div>
           </button>
           <button
             onClick={() => setMode("direct")}
@@ -284,40 +312,62 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
             }`}
           >
             <div className="font-semibold text-indigo-900">📱 Esta app</div>
-            <div className="text-xs text-gray-500">A chave fica guardada neste telemóvel</div>
+            <div className="text-xs text-gray-500">Funciona sozinha, sem servidor</div>
           </button>
         </div>
 
-        {mode === "direct" && (
-          <div className="mb-4 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">
-            ⚠️ No modo &ldquo;Esta app&rdquo;, a chave fica guardada neste telemóvel. É prático, mas se o
-            telemóvel for perdido ou roubado, a chave pode ser usada por outra pessoa.
-            Recomendado: modo Servidor.
-          </div>
+        {mode === "direct" ? (
+          <>
+            <div className="mb-4 rounded-xl bg-green-50 p-3 text-xs text-green-800">
+              ✅ No modo &ldquo;Esta app&rdquo; não precisas de servidor nenhum — o telemóvel fala
+              diretamente com a IA do Google. Só precisas de internet.
+            </div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Chave API do Google Gemini
+            </label>
+            <div className="mb-2 flex gap-2">
+              <input
+                type={showKey ? "text" : "password"}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="AIza..."
+                className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+              />
+              <button
+                onClick={() => setShowKey((v) => !v)}
+                className="rounded-xl bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200"
+              >
+                {showKey ? "🙈" : "👁️"}
+              </button>
+            </div>
+            <p className="mb-4 text-xs text-gray-400">
+              A chave fica guardada neste telemóvel (protegida por PIN) e só é usada para falar
+              com a API do Google. Obtém uma em aistudio.google.com/apikey
+            </p>
+            <div className="mb-4 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">
+              ⚠️ Se o telemóvel for perdido ou roubado, a chave pode ser usada por outra pessoa.
+              Se isso acontecer, apaga a chave no aistudio.google.com e cria outra.
+            </div>
+          </>
+        ) : (
+          <>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Endereço do servidor (opcional na app Android)
+            </label>
+            <input
+              type="url"
+              value={serverUrl}
+              onChange={(e) => setServerUrl(e.target.value)}
+              placeholder="https://teu-servidor.com"
+              className="mb-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+            />
+            <p className="mb-4 text-xs text-gray-400">
+              {isNativeApp()
+                ? "Na app Android, indica o endereço do computador/servidor onde corre o Tutor IA (ex.: http://192.168.1.42:3000). A chave API fica nesse servidor — mais seguro."
+                : "No navegador, a app usa automaticamente o servidor onde está publicada. Só muda se quiseres ligar a outro servidor."}
+            </p>
+          </>
         )}
-
-        <label className="mb-1 block text-sm font-medium text-gray-700">
-          Chave API do Google Gemini
-        </label>
-        <div className="mb-2 flex gap-2">
-          <input
-            type={showKey ? "text" : "password"}
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="AIza..."
-            className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
-          />
-          <button
-            onClick={() => setShowKey((v) => !v)}
-            className="rounded-xl bg-gray-100 px-3 py-2 text-sm text-gray-600 hover:bg-gray-200"
-          >
-            {showKey ? "🙈" : "👁️"}
-          </button>
-        </div>
-        <p className="mb-4 text-xs text-gray-400">
-          A chave nunca sai do telemóvel — só é usada para falar com a API do Google.
-          Obtém uma em aistudio.google.com/apikey
-        </p>
 
         {status && (
           <div className="mb-4 rounded-xl bg-indigo-50 px-3 py-2 text-sm text-indigo-800">
@@ -370,17 +420,19 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
           </button>
           <button
             onClick={handleTest}
-            disabled={testing || !apiKey.trim()}
+            disabled={testing || (mode === "direct" ? !apiKey.trim() : isNativeApp() && !serverUrl.trim())}
             className="rounded-xl bg-indigo-100 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-200 disabled:opacity-50"
           >
-            {testing ? "A testar..." : "Testar chave"}
+            {testing ? "A testar..." : mode === "direct" ? "Testar chave" : "Testar servidor"}
           </button>
-          <button
-            onClick={() => requestAction("clear")}
-            className="rounded-xl bg-red-100 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-200"
-          >
-            Apagar chave
-          </button>
+          {mode === "direct" && (
+            <button
+              onClick={() => requestAction("clear")}
+              className="rounded-xl bg-red-100 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-200"
+            >
+              Apagar chave
+            </button>
+          )}
         </div>
 
         <div className="mt-6 border-t border-gray-100 pt-4">
