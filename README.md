@@ -1,36 +1,174 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Tutor IA 🎓
 
-## Getting Started
+Um tutor de estudos com IA (Google Gemini) pensado para estudantes de ~12 anos.
+A IA explica com linguagem simples, usa exemplos do dia a dia, **não dá respostas prontas**
+e guía com perguntas para a criança mesma chegar à solução.
 
-First, run the development server:
+## Stack
+
+- Next.js 15 (App Router) + TypeScript + Tailwind CSS
+- SDK oficial `@google/genai` — modelo **Gemini 3.8 Flash** (`gemini-3.8-flash`) com
+  **raciocínio (thinking level HIGH)** — quotas generosas da Google com preço introdutório
+- **App Android** via Capacitor (`android/`) + **PWA instalável** (manifest + service worker)
+- **Voz**: botão 🎤 para ditar (reconhecimento de voz nativo no Android, Web Speech API
+  no browser) e 🔊 "Ouvir" em cada resposta do tutor (voz do sistema, pt-BR)
+- A chave da API fica **somente no servidor** (API Route) — nunca no navegador
+
+## Como rodar
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # edite e coloque sua GEMINI_API_KEY
+npm run dev                  # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Obtenha a chave em https://aistudio.google.com/apikey
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Fotos (trabalhos, fichas, caderno) 📸
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+O estudante pode anexar até **4 fotos por mensagem** (JPEG, PNG ou WebP) pelo botão 📎,
+ou **tirar uma foto na hora** com o botão 📷 — na app Android abre a câmara traseira
+nativamente (plugin `@capacitor/camera`); no browser/PWA abre a câmara diretamente.
+A foto é redimensionada e sem metadados EXIF antes de sair do telemóvel.
+O tutor enxerga a imagem e:
 
-## Learn More
+- descreve o que está vendo (ex.: "Vejo 5 problemas de fração...");
+- **não resolve e não dá a resposta final** — dá uma dica ou pergunta guiada;
+- pede foto mais nítida se a imagem estiver ilegível.
 
-To learn more about Next.js, take a look at the following resources:
+Antes de enviar, cada foto é **redimensionada (máx. 1600 px) e convertida para JPEG no navegador**,
+o que remove metadados EXIF (GPS, câmera, etc.) — mais privacidade para a criança.
+O servidor valida tipo, tamanho (máx. 4 MB por foto) e conteúdo base64 de todas as imagens.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Secção de Definições ⚙️ (para os pais) — protegida por PIN 🔐
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Botão ⚙️ no canto superior direito abre um modal onde o pai configura.
+Se existir um **PIN** (4 a 6 dígitos), a secção fica bloqueada:
 
-## Deploy on Vercel
+- é pedido o PIN para **abrir** as Definições;
+- é pedido o PIN para **guardar alterações** na chave API;
+- é pedido o PIN para **apagar** a chave API;
+- dentro das Definições há uma secção "🔐 Criar/Alterar/Remover PIN" (para alterar ou
+  remover o PIN é pedido o PIN atual).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+O PIN **nunca é guardado em texto**: fica como hash SHA-256 com salt aleatório
+(`lib/pin.ts`). Se o pai se esquecer do PIN, a app não consegue recuperá-lo —
+é preciso limpar os dados da app nas Definições do Android e configurar de novo.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Dentro das Definições, o pai configura:
+
+- **Modo Servidor (recomendado):** a app fala com o teu computador (Next.js), que usa a
+  chave do `.env.local`. A chave nunca sai do computador.
+- **Modo "Esta app":** a chave API do Gemini é guardada **no próprio telemóvel**
+  (via `@capacitor/preferences` na app; `localStorage` no browser) e enviada em cada
+  pedido. Tem um aviso de segurança e botões **Testar chave** e **Apagar chave**.
+  ⚠️ Se o telemóvel for perdido/roubado, quem o tiver pode usar a tua chave.
+
+Em ambos os modos, todas as proteções do servidor continuam ativas: rate limit,
+filtros de conteúdo, safety settings do Gemini e limites de tamanho.
+
+## Segurança de idade (adequação a 12 anos) — 4 camadas
+
+1. **System prompt reforçado** (`lib/gemini.ts`): proíbe violência, sexual, ódio, drogas,
+   instruções perigosas; manda recusar com gentileza e redirecionar para os estudos; proíbe
+   comportamento de "adulto romântico"; incentiva a falar com um adulto de confiança se em perigo.
+2. **Safety settings do Gemini** no pedido: `SEXUALLY_EXPLICIT` bloqueado a partir de LOW,
+   restantes categorias em ONLY_HIGH.
+3. **Filtro de saída no servidor** (`route.ts`): deteta padrões de conteúdo inadequado na
+   resposta da IA e substitui por uma resposta segura.
+4. **Moderação por IA** (`route.ts`): uma segunda chamada ao modelo (thinking LOW, máx. 16
+   tokens) julga se o texto é adequado para 12 anos; se não for, é substituído.
+
+## Proteções incluídas
+
+- Chave da API no servidor por defeito (proxy via `/api/chat`); modo "app" opcional com aviso
+- Validação de formato da chave (padrão `AIza...`) antes de chamar a API
+- Chave guardada no telemóvel nunca aparece no histórico nem é mostrada por defeito
+- **PIN de 4-6 dígitos protege as Definições** (abrir, alterar/apagar chave, alterar PIN)
+- PIN guardado apenas como hash SHA-256 + salt — nunca em texto simples
+- **Voz**: 🎤 ditado (plugin nativo `@capacitor-community/speech-recognition` no Android;
+  Web Speech API no browser) e 🔊 leitura de respostas (speechSynthesis, pt-BR)
+- Rate limit: 20 requisições/minuto por IP
+- Limite de 1000 caracteres por mensagem, 4 fotos por mensagem e 512 tokens por resposta
+- Validação server-side de imagens (tipo permitido, tamanho, base64 válido)
+- Redimensionamento no cliente + remoção de metadados EXIF/GPS
+- Histórico limitado às últimas 20 mensagens
+- Filtro de palavras-chave de temas proibidos na entrada
+- Safety settings do Gemini (ódio, assédio, sexual, perigoso)
+- System prompt que obriga linguagem adequada para 12 anos e proíbe dar "a resposta pronta"
+- Histórico do chat (texto) salvo apenas no `localStorage` do próprio dispositivo
+
+## App Android 📱
+
+Há **duas formas** de usar no telemóvel:
+
+### Opção 1 — PWA instalável (mais simples, sem APK)
+
+1. Corre o servidor acessível na rede Wi-Fi: `npm run dev` (ou `npm run build && npm run start`) com `-H 0.0.0.0`
+2. No telemóvel, abre `http://<ip-do-computador>:3000` no Chrome
+3. Menu → **"Adicionar ao ecrã principal"** — fica com ícone próprio, abre em ecrã inteiro
+
+### Opção 2 — APK nativo (Capacitor)
+
+O projeto Android já está em `android/` e os APKs já compilados estão na raiz:
+
+- `tutor-ia-debug.apk` — para testar (instala direto)
+- `tutor-ia-release.apk` — versão final assinada
+
+**Para instalar no telemóvel:**
+
+1. Ativa **"Instalar apps desconhecidas"** (Definições → Segurança) para o browser/ficheiro
+2. Transfere o APK para o telemóvel (USB, email, etc.) e toca nele para instalar
+3. Abre a app — ela liga ao servidor configurado em `capacitor.config.ts` (`server.url`)
+
+**Importante:** a app carrega a interface a partir do teu servidor Next.js. No telemóvel,
+edita `capacitor.config.ts` e coloca o **IP do teu computador na rede Wi-Fi**:
+
+```ts
+server: { url: "http://192.168.1.42:3000", cleartext: true }
+```
+
+Descobre o IP com `ipconfig` (Windows) ou `ip addr` (Mac/Linux). Depois:
+
+```bash
+npm run build && npx next export   # ou copia o out/ existente
+npm run android:sync
+npm run android:apk                # gera android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Para recompilar precisas de **JDK 21** e **Android SDK** (ANDROID_HOME). No Android Studio é só
+abrir a pasta `android/` — ele trata de tudo.
+
+> ⚠️ Como a app usa HTTP na rede local, ela só funciona em Wi-Fi de casa. Para usar fora de casa,
+> publica o servidor com HTTPS (Vercel, Railway, etc.) e troca o `server.url`.
+
+## Estrutura
+
+```
+app/
+  api/chat/route.ts    # proxy seguro para o Gemini (rate limit, filtros, limites)
+  components/Chat.tsx  # interface de chat (seleção de matéria, fotos, histórico local)
+  page.tsx             # página principal
+lib/
+  gemini.ts            # cliente Gemini + system prompt do tutor
+  images.ts            # processamento de fotos no cliente (redimensiona, remove EXIF)
+  shared.ts            # limites e tipos partilhados (cliente + servidor)
+public/
+  manifest.webmanifest # PWA
+  sw.js                # service worker (app shell offline)
+  icons/               # ícones PWA
+android/               # projeto Android (Capacitor)
+capacitor.config.ts    # configuração da app (appId, server.url, splash)
+```
+
+## Permissões Android
+
+- `INTERNET` — falar com o servidor/Gemini
+- `CAMERA` — botão 📷 para fotografar exercícios (câmara não é obrigatória: a app
+  funciona sem ela, só perde o botão de foto direta)
+- `RECORD_AUDIO` — botão 🎤 para ditar perguntas por voz (a app pede a permissão em
+  tempo de execução; sem ela, só desaparece o botão de ditado)
+
+## Matérias suportadas
+
+Matemática, Ciências, Português, História, Geografia e Geral — cada uma com um tom de saudação próprio.

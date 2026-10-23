@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Artefactos do build Android (Gradle/Capacitor):
+    "android/**",
   ]),
 ]);
 
