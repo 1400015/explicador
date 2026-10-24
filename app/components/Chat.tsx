@@ -8,7 +8,9 @@ import { takePhoto } from "@/lib/camera";
 import { isSpeechRecognitionAvailable, listenOnce, speak, stopSpeaking } from "@/lib/voice";
 import { isNativeApp, loadSettings, type AppSettings } from "@/lib/settings";
 import { upsertConversation, type StoredMessage } from "@/lib/conversations";
+import { needsSupportBanner } from "@/lib/support";
 import ConversationList from "./ConversationList";
+import SupportBanner from "./SupportBanner";
 import Settings from "./Settings";
 import {
   MAX_IMAGES_PER_MESSAGE,
@@ -112,8 +114,14 @@ export default function Chat() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [conversationId, setConversationId] = useState<string>(newConversationId);
   const [listening, setListening] = useState(false);
+  const [supportDismissed, setSupportDismissed] = useState(false);
   const [speakingMessageIndex, setSpeakingMessageIndex] = useState<number | null>(null);
   const speechSupported = isSpeechRecognitionAvailable();
+  const showSupportBanner =
+    !supportDismissed &&
+    messages.length > 0 &&
+    messages[messages.length - 1].role === "user" &&
+    needsSupportBanner(messages[messages.length - 1].text);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -332,6 +340,7 @@ export default function Chat() {
     });
     setPendingImages([]);
     setMessages([]);
+    setSupportDismissed(false);
     setConversationId(newConversationId());
     saveState({ messages: [], subject });
     setError(null);
@@ -345,6 +354,7 @@ export default function Chat() {
     stopSpeaking();
     setSpeakingMessageIndex(null);
     setPendingImages([]);
+    setSupportDismissed(false);
     setConversationId(conversation.id);
     setMessages(conversation.messages.map((m) => ({ role: m.role, text: m.text })));
     saveState({ subject: conversation.subject, messages: conversation.messages });
@@ -464,6 +474,8 @@ export default function Chat() {
             {error}
           </div>
         )}
+
+        {showSupportBanner && <SupportBanner onClose={() => setSupportDismissed(true)} />}
 
         <div ref={bottomRef} />
       </main>
