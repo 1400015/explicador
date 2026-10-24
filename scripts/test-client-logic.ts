@@ -120,6 +120,15 @@ async function main() {
   const hash2 = await createPinHash("4321");
   ok("hashes do mesmo PIN são diferentes (salt aleatório)", hash.hash !== hash2.hash);
 
+  console.log("== support.ts ==");
+  const { needsSupportBanner } = await import("../lib/support");
+  ok("deteta bullying", needsSupportBanner("os meus colegas vivem a fazer-me bullying na aula"));
+  ok("deteta agressão em casa", needsSupportBanner("o meu pai bate-me quando tiro mas notas"));
+  ok("deteta autolesão", needsSupportBanner("quero-me machucar"));
+  ok("deteta solidão", needsSupportBanner("sinto-me sozinho e sem saída"));
+  ok("não deteta em pergunta normal", !needsSupportBanner("como se faz uma equação de 2º grau?"));
+  ok("não deteta em contexto escolar", !needsSupportBanner("o bullying é um tema para o trabalho de história"));
+
   console.log("== conversations.ts ==");
   const { saveConversations, loadConversations, upsertConversation, deleteConversation } =
     await import("../lib/conversations");
