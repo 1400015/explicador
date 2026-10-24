@@ -13,8 +13,18 @@ const OUTPUT_BLOCKED_PATTERNS = [
   /\b(receita de|como sintetizar)\b/i,
   /\b(conte\u00fado sexual expl\u00edcito|pornografia|como fazer sexo|fazer sexo|vamos transar|quero transar|vou te comer|linguagem sexual expl\u00edcita)\b/i,
   /\b(sexo|rela\u00e7\u00f5es sexuais|ato sexual)\b.{0,30}\b(comigo|contigo|com uma crian\u00e7a|pra mim)\b/i,
-  /\b(suicid[a-z]*|me matar|como morrer)\b/i,
+  // Automutila\u00e7\u00e3o / suic\u00eddio: instru\u00e7\u00f5es ou incentivo direto (n\u00e3o apenas men\u00e7\u00e3o do tema em contexto escolar)
+  /\b(como|maneiras? de|jeitos? de)\s+(me\s+)?(matar|machucar|magoar|cortar)\b/i,
+  /\b(quero|vou|devias?|deverias?|podes?|experimenta)\s+((te|se|me)\s+)?(matar|machucar|cortar|magoar)\b/i,
+  /\b(suicid[io]\w*)\s*[:\u2013-]?\s*(como|instru\u00e7\u00f5es|m\u00e9todos?|passos)/i,
   /\b(instru\u00e7\u00f5es para (ferir|machucar|matar) algu\u00e9m)/i,
+  // Challenges perigosos de redes sociais
+  /\b(challenge|desafio)\b.{0,30}\b(perigoso|mortal|de fogo|da bolinha|do apagar|do desodorante|do passemal|da asfixia|do desmaio|momo|ballerina|skull-breaker|breaking-skull)\b/i,
+  /\b(blue ?whale|momo ?challenge|skull ?breaker|tide ?pod|choking|pass-out|blackout)\b.{0,30}\b(challenge|desafio|proveito|experimenta)/i,
+  // Contacto pessoal: a IA nunca deve pedir dados privados da crian\u00e7a
+  /\b(manda|envia|diz|passa|me d[a\u00e1])\b.{0,30}\b(teu|tua|sua|seu|o teu|a tua)\s+(n\u00famero|telefone|endere\u00e7o|morada|casa|escola|rede social|instagram|tiktok|whatsapp|snapchat)\b/i,
+  /\b(qual(\s+\u00e9)?\s+o\s+teu|qual(\s+\u00e9)?\s+a\s+tua)\s+(n\u00famero|telefone|endere\u00e7o|morada|escola)\b/i,
+  /\b(encontra(r)?|vamo(s)?\s+nos\s+ver|vamo(s)?\s+marcar)\b.{0,30}\b(pessoalmente|em pessoa|na vida real|sem os teus pais)\b/i,
 ];
 
 export function outputIsInappropriate(text: string): boolean {

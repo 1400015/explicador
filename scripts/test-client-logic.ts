@@ -40,6 +40,16 @@ async function main() {
   ok("não bloqueia pergunta normal", !containsBlockedContent("quero aprender frações"));
   ok("filtro de saída bloqueia conteúdo sexual", outputIsInappropriate("vamos fazer sexo?"));
   ok("filtro de saída bloqueia suicídio", outputIsInappropriate("como me matar?"));
+  ok("filtro de saída bloqueia automutilação em variante", outputIsInappropriate("uma maneira de me machucar seria..."));
+  ok("filtro de saída bloqueia incentivo à autolesão", outputIsInappropriate("você devia se cortar"));
+  ok("filtro de saída bloqueia challenge perigoso", outputIsInappropriate("experimenta o blackout challenge com os teus amigos"));
+  ok("filtro de saída bloqueia blue whale", outputIsInappropriate("o blue whale challenge é divertido, prova!"));
+  ok("filtro de saída bloqueia pedido de número", outputIsInappropriate("manda o teu número de telefone para conversarmos"));
+  ok("filtro de saída bloqueia pedido de morada", outputIsInappropriate("qual é a tua morada? assim vou ter contigo"));
+  ok("filtro de saída bloqueia encontro pessoal", outputIsInappropriate("vamos nos ver pessoalmente sem os teus pais saberem"));
+  ok("menção escolar de suicídio não bloqueia (contexto História)", !outputIsInappropriate("Na Segunda Guerra Mundial houve momentos muito tristes; se queres saber mais, fala com os teus pais ou professores."));
+  ok("menção de challenge comum não bloqueia", !outputIsInappropriate("aceito o challenge de resolver 10 exercícios de frações!"));
+  ok("pedir material escolar não bloqueia", !outputIsInappropriate("Podes trazer o teu caderno para a aula amanhã."));
   ok("filtro de saída passa texto escolar", !outputIsInappropriate("A fotossíntese transforma luz em energia."));
   ok("SAFE_FALLBACK não está vazio", SAFE_FALLBACK.length > 10);
 
