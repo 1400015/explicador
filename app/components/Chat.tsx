@@ -435,6 +435,7 @@ export default function Chat() {
             {m.images && m.images.length > 0 && (
               <span className="mb-2 flex flex-wrap gap-2">
                 {m.images.map((img, j) => (
+                  // eslint-disable-next-line @next/next/no-img-element -- preview base64 local, next/image não otimiza data-URLs
                   <img
                     key={j}
                     src={`data:${img.mimeType};base64,${img.data}`}
@@ -485,6 +486,7 @@ export default function Chat() {
           <div className="mx-auto flex max-w-2xl flex-wrap gap-2 px-4 pt-3">
             {pendingImages.map((p) => (
               <div key={p.id} className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element -- preview local (blob/data URL) temporário, next/image não otimiza */}
                 <img
                   src={p.previewUrl}
                   alt="Foto para enviar"
