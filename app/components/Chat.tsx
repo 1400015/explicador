@@ -7,6 +7,8 @@ import { processImageFiles } from "@/lib/images";
 import { takePhoto } from "@/lib/camera";
 import { isSpeechRecognitionAvailable, listenOnce, speak, stopSpeaking } from "@/lib/voice";
 import { isNativeApp, loadSettings, type AppSettings } from "@/lib/settings";
+import { upsertConversation, type StoredMessage } from "@/lib/conversations";
+import ConversationList from "./ConversationList";
 import Settings from "./Settings";
 import {
   MAX_IMAGES_PER_MESSAGE,
@@ -14,7 +16,6 @@ import {
   type ChatMessage,
 } from "@/lib/shared";
 
-type StoredMessage = { role: "user" | "model"; text: string };
 type StoredState = { messages: StoredMessage[]; subject: Subject };
 
 type PendingImage = {
@@ -26,6 +27,10 @@ type PendingImage = {
 const STORAGE_KEY = "tutor-ia-history-v1";
 const STORAGE_EVENT = "tutor-ia-storage";
 const EMPTY_STATE: StoredState = { messages: [], subject: "geral" };
+
+function newConversationId(): string {
+  return `c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 const SUBJECTS = Object.keys(SUBJECT_LABELS) as Subject[];
 
@@ -105,6 +110,7 @@ export default function Chat() {
     pin: null,
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [conversationId, setConversationId] = useState<string>(newConversationId);
   const [listening, setListening] = useState(false);
   const [speakingMessageIndex, setSpeakingMessageIndex] = useState<number | null>(null);
   const speechSupported = isSpeechRecognitionAvailable();
@@ -134,6 +140,14 @@ export default function Chat() {
       subject: loadState().subject,
       messages: next.map(({ role, text }) => ({ role, text })),
     });
+    if (next.length > 0) {
+      void upsertConversation({
+        id: conversationId,
+        subject,
+        updatedAt: Date.now(),
+        messages: next.map(({ role, text }) => ({ role, text })) as StoredMessage[],
+      });
+    }
   }
 
   function updateSubject(next: Subject) {
@@ -317,8 +331,24 @@ export default function Chat() {
       if (p.previewUrl.startsWith("blob:")) URL.revokeObjectURL(p.previewUrl);
     });
     setPendingImages([]);
-    persistMessages([]);
+    setMessages([]);
+    setConversationId(newConversationId());
     saveState({ messages: [], subject });
+    setError(null);
+  }
+
+  function openConversation(conversation: {
+    id: string;
+    subject: Subject;
+    messages: StoredMessage[];
+  }) {
+    stopSpeaking();
+    setSpeakingMessageIndex(null);
+    setPendingImages([]);
+    setConversationId(conversation.id);
+    setMessages(conversation.messages.map((m) => ({ role: m.role, text: m.text })));
+    saveState({ subject: conversation.subject, messages: conversation.messages });
+    updateSubject(conversation.subject);
     setError(null);
   }
 
@@ -368,6 +398,15 @@ export default function Chat() {
             <p className="mt-2 text-sm text-indigo-700">
               Dica: você pode anexar uma foto do seu caderno ou ficha com o botão 📎!
             </p>
+            <ConversationList
+              onOpen={openConversation}
+              onDeleted={(id) => {
+                if (id === conversationId) {
+                  setMessages([]);
+                  setConversationId(newConversationId());
+                }
+              }}
+            />
           </div>
         )}
 

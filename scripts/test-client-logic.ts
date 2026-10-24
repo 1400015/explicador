@@ -120,6 +120,43 @@ async function main() {
   const hash2 = await createPinHash("4321");
   ok("hashes do mesmo PIN são diferentes (salt aleatório)", hash.hash !== hash2.hash);
 
+  console.log("== conversations.ts ==");
+  const { saveConversations, loadConversations, upsertConversation, deleteConversation } =
+    await import("../lib/conversations");
+  const conv1 = { id: "c-1", subject: "matematica" as const, updatedAt: 100, messages: [{ role: "user" as const, text: "oi" }] };
+  const conv2 = { id: "c-2", subject: "geral" as const, updatedAt: 200, messages: [] };
+  await saveConversations([conv1, conv2]);
+  let list = await loadConversations();
+  ok("guarda e carrega conversas", list.length === 2);
+  ok("ordena por mais recente primeiro", list[0].id === "c-2");
+  await upsertConversation({ ...conv2, updatedAt: 300 });
+  list = await loadConversations();
+  ok("upsert atualiza sem duplicar", list.length === 2 && list[0].updatedAt === 300);
+  ok("limita a 5 conversas", await (async () => {
+    const many = Array.from({ length: 8 }, (_, i) => ({
+      id: `c-${i}`,
+      subject: "geral" as const,
+      updatedAt: i,
+      messages: [],
+    }));
+    await saveConversations(many);
+    return (await loadConversations()).length === 5;
+  })());
+  ok("limita mensagens ao histórico máximo", await (async () => {
+    const long = {
+      id: "c-long",
+      subject: "geral" as const,
+      updatedAt: 1,
+      messages: Array.from({ length: 30 }, () => ({ role: "user" as const, text: "x" })),
+    };
+    await saveConversations([long]);
+    const loaded = await loadConversations();
+    return loaded[0].messages.length === 20;
+  })());
+  await deleteConversation("c-1");
+  list = await loadConversations();
+  ok("apaga conversa pelo id", !list.some((c) => c.id === "c-1"));
+
   console.log(`\n✅ Todos os ${passed} testes passaram.`);
 }
 
