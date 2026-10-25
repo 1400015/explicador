@@ -102,6 +102,17 @@ A lógica de segurança é **partilhada** entre servidor (`app/api/chat/route.ts
 - Redimensionamento no cliente + remoção de metadados EXIF/GPS
 - Histórico limitado às últimas 20 mensagens
 
+## Funcionalidades (v1.1.0)
+
+- 💬 **Conversas guardadas** — as últimas 5 conversas ficam no telemóvel; lista no ecrã inicial para reabrir ou apagar
+- 💛 **Banner de apoio** — se a criança mencionar bullying, abuso ou perigo, aparecem contactos de ajuda (SOS Voz Amiga, 112)
+- 🤔 **"Não entendi"** — botão em cada resposta que pede uma explicação mais simples com exemplos do dia a dia
+- ✅ **Verificador de cálculo** — `12*4+3 = 51` responde certo/errado na hora, sem revelar o resultado (local, sem quota de API)
+- 📴 **Dicas offline** — sem internet, dicas pedagógicas da matéria atual em vez de um erro seco
+- 📊 **Estatísticas para os pais** — perguntas por dia/matéria (últimos 7 dias) nas Definições, atrás do PIN; nunca o conteúdo das conversas
+- 🛡️ **Filtro de saída reforçado** — automutilação, challenges perigosos de redes sociais e pedidos de contacto pessoal; moderação por IA com retry
+- 🔧 **CI** — testes, typecheck, lint e build em cada push/PR (GitHub Actions)
+
 ## App Android 📱
 
 A app **funciona sozinha** — instala e abre, sem precisar de computador ligado.
@@ -146,7 +157,7 @@ abrir a pasta `android/` — ele trata de tudo.
 ## Testes
 
 ```bash
-npm test    # 38 testes: filtros de segurança, prompt, validações do cliente, PIN
+npm test    # 76 testes: filtros de segurança, prompt, validações, PIN, conversas, estatísticas, cálculo
 ```
 
 ## Estrutura
