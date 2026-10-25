@@ -176,6 +176,27 @@ async function main() {
   list = await loadConversations();
   ok("apaga conversa pelo id", !list.some((c) => c.id === "c-1"));
 
+  console.log("== stats.ts ==");
+  const { recordQuestion, getDailyTotals, getSubjectTotals, loadStats } = await import("../lib/stats");
+  for (let i = 0; i < 3; i++) await recordQuestion("matematica");
+  await recordQuestion("ciencias");
+  ok("registra perguntas do dia", await (async () => {
+    const stats = await loadStats();
+    return stats.length === 2;
+  })());
+  ok("total diário soma as matérias", await (async () => {
+    const daily = await getDailyTotals();
+    return daily[daily.length - 1].total === 4;
+  })());
+  ok("total por matéria ordena por contagem", await (async () => {
+    const subjects = await getSubjectTotals();
+    return subjects.length === 2 && subjects[0].subject === "matematica" && subjects[0].count === 3;
+  })());
+  ok("diário devolve 7 dias", await (async () => {
+    const daily = await getDailyTotals();
+    return daily.length === 7;
+  })());
+
   console.log(`\n✅ Todos os ${passed} testes passaram.`);
 }
 

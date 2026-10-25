@@ -9,6 +9,7 @@ import { isSpeechRecognitionAvailable, listenOnce, speak, stopSpeaking } from "@
 import { isNativeApp, loadSettings, type AppSettings } from "@/lib/settings";
 import { upsertConversation, type StoredMessage } from "@/lib/conversations";
 import { needsSupportBanner } from "@/lib/support";
+import { recordQuestion } from "@/lib/stats";
 import ConversationList from "./ConversationList";
 import OfflineTips from "./OfflineTips";
 import SupportBanner from "./SupportBanner";
@@ -253,6 +254,7 @@ export default function Chat() {
     setInput("");
 
     const images = pendingImages.map((p) => p.image);
+    void recordQuestion(subject);
     const newMessages: ChatMessage[] = [...messages, { role: "user", text, images }];
     persistMessages(newMessages);
     setPendingImages([]);
