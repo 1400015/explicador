@@ -3,15 +3,16 @@
 ## ✅ Publicado no GitHub
 
 - **Repositório (privado):** https://github.com/1400015/explicador
-- **Versão atual:** `v1.1.2` ✅ *(recomendada — instala esta)*
+- **Versão atual:** `v1.1.3` ✅ *(recomendada — instala esta)*
 - **Releases:** https://github.com/1400015/explicador/releases
-  - **v1.1.2** — **mensagens de erro claras** (diz exatamente o que falhou: chave, quota, rede, bloqueio) + **teclado com correção e sugestões** ✅
+  - **v1.1.3** — **HTTP nativo no Android** (a app fala com a Gemini pelo OkHttp do telemóvel, não pelo browser) — corrige falsos "sem internet" e dá o erro real ✅
+  - v1.1.2 — **mensagens de erro claras** (diz exatamente o que falhou: chave, quota, rede, bloqueio) + **teclado com correção e sugestões**
   - v1.1.1 — aceita as **novas chaves API da Google (formato `AQ....`)**, além das antigas `AIza...` *(corrige "não parece válida")*
   - v1.1.0 — app completa: conversas guardadas, banner de apoio, botão "Não entendi",
     verificador de cálculo, dicas offline, estatísticas para os pais, segurança reforçada
   - v1.0.1 — app Android autónoma (sem servidor)
   - v1.0.0 — primeira versão (tinha bug do ecrã branco)
-- **APKs para download direto** (na raiz do repositório, versão **1.1.2**):
+- **APKs para download direto** (na raiz do repositório, versão **1.1.3**):
   - [⬇️ tutor-ia-release.apk](https://github.com/1400015/explicador/raw/main/tutor-ia-release.apk) — versão final assinada (~6,5 MB)
   - [⬇️ tutor-ia-debug.apk](https://github.com/1400015/explicador/raw/main/tutor-ia-debug.apk) — versão de teste (~8,0 MB)
 
@@ -25,7 +26,7 @@ Se já tens a app instalada (v1.0.x), **a v1.1.0 instala por cima normalmente** 
 assinatura, versionCode superior) — o Android aceita a atualização direta.
 A v1.0.0 (ecrã branco) é que deve ser **desinstalada** primeiro.
 
-## Como instalar a app no telemóvel (v1.1.2)
+## Como instalar a app no telemóvel (v1.1.3)
 
 1. Abre o link do **tutor-ia-release.apk** no browser do telemóvel e descarrega
    (ou transfere o ficheiro por USB/WhatsApp/email)
@@ -46,6 +47,21 @@ A v1.0.0 (ecrã branco) é que deve ser **desinstalada** primeiro.
 
 > ℹ️ Alternativa sem instalar nada: a **PWA** — abre a app web publicada num servidor
 > (Vercel/Netlify) no browser do telemóvel e "Adicionar ao ecrã principal".
+
+## O que mudou na v1.1.3 (HTTP nativo — corrige falso "sem internet")
+
+### O problema
+No telemóvel, a app fazia os pedidos à Gemini pelo **browser (WebView)**. Em alguns
+telemóveis/redes, o WebView falha (TLS, políticas de rede, proxy) e a app dizia
+"sem internet" — **mesmo com internet a funcionar**. Además, o erro real perdia-se.
+
+### A correção
+A app Android passa a chamar a Gemini pelo **HTTP nativo do telemóvel (OkHttp)**,
+através do `CapacitorHttp` — o mesmo motor de rede das apps nativas. Vantagens:
+- ✅ Ligações mais fiáveis (não depende do WebView)
+- ✅ **Erros HTTP reais** — se a chave for rejeitada, diz "chave inválida"; se for quota, diz "espera 1 minuto"; etc.
+- ✅ Se o HTTP nativo falhar por rede, há **fallback automático** para o SDK
+- ✅ As 4 camadas de segurança mantêm-se (prompt + safetySettings + filtro + moderação)
 
 ## O que mudou na v1.1.2 (erros claros + teclado)
 
