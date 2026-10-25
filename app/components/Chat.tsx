@@ -245,6 +245,72 @@ export default function Chat() {
     });
   }
 
+  async function askTutor(
+    text: string,
+    images: ChatImage[],
+    history: ChatMessage[]
+  ): Promise<string | null> {
+    const native = isNativeApp();
+
+    if (native && settings.mode === "direct") {
+      // App Android: o telemóvel fala diretamente com a Gemini (sem servidor).
+      if (!settings.apiKey.trim()) {
+        setError("Guarda a tua chave API nas Definições (⚙️) para a app funcionar.");
+        return null;
+      }
+      return askTutorDirect({
+        apiKey: settings.apiKey.trim(),
+        message: text,
+        history,
+        subject,
+        images,
+      });
+    }
+
+    if (native && settings.mode === "server" && settings.serverUrl.trim()) {
+      // App Android + servidor próprio do utilizador.
+      const base = settings.serverUrl.trim().replace(/\/+$/, "");
+      const res = await fetch(`${base}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, images, history, subject }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "O servidor não respondeu. Confere o endereço nas Definições.");
+        return null;
+      }
+      return data.reply as string;
+    }
+
+    if (native && settings.mode === "server") {
+      // App Android sem servidor: explica em vez de ficar em branco.
+      setError(
+        "Esta app não tem servidor ligado. Nas Definições (⚙️), escolhe o modo “Esta app” e guarda a tua chave API — ou indica o endereço de um servidor próprio."
+      );
+      return null;
+    }
+
+    // Web (PWA/navegador): fala com o servidor onde a app está publicada.
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: text,
+        images,
+        history,
+        subject,
+        apiKey: settings.mode === "direct" ? settings.apiKey : undefined,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error ?? "Algo deu errado. Tenta de novo?");
+      return null;
+    }
+    return data.reply as string;
+  }
+
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
     const text = input.trim() || (pendingImages.length > 0 ? "Olha essa foto do meu trabalho, pode me ajudar?" : "");
@@ -260,69 +326,12 @@ export default function Chat() {
     setPendingImages([]);
     setLoading(true);
 
-    const native = isNativeApp();
-
     try {
-      let reply: string;
-
-      if (native && settings.mode === "direct") {
-        // App Android: o telemóvel fala diretamente com a Gemini (sem servidor).
-        if (!settings.apiKey.trim()) {
-          setError("Guarda a tua chave API nas Definições (⚙️) para a app funcionar.");
-          persistMessages(messages);
-          return;
-        }
-        reply = await askTutorDirect({
-          apiKey: settings.apiKey.trim(),
-          message: text,
-          history: messages,
-          subject,
-          images,
-        });
-      } else if (native && settings.mode === "server" && settings.serverUrl.trim()) {
-        // App Android + servidor próprio do utilizador.
-        const base = settings.serverUrl.trim().replace(/\/+$/, "");
-        const res = await fetch(`${base}/api/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: text, images, history: messages, subject }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          setError(data.error ?? "O servidor não respondeu. Confere o endereço nas Definições.");
-          persistMessages(messages);
-          return;
-        }
-        reply = data.reply;
-      } else if (native && settings.mode === "server") {
-        // App Android sem servidor: explica em vez de ficar em branco.
-        setError(
-          "Esta app não tem servidor ligado. Nas Definições (⚙️), escolhe o modo “Esta app” e guarda a tua chave API — ou indica o endereço de um servidor próprio."
-        );
+      const reply = await askTutor(text, images, messages);
+      if (reply === null) {
         persistMessages(messages);
         return;
-      } else {
-        // Web (PWA/navegador): fala com o servidor onde a app está publicada.
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: text,
-            images,
-            history: messages,
-            subject,
-            apiKey: settings.mode === "direct" ? settings.apiKey : undefined,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          setError(data.error ?? "Algo deu errado. Tenta de novo?");
-          persistMessages(messages);
-          return;
-        }
-        reply = data.reply;
       }
-
       persistMessages([...newMessages, { role: "model", text: reply }]);
     } catch (err) {
       setError(
@@ -334,6 +343,39 @@ export default function Chat() {
         setOfflineTipsOpen(true);
       }
       persistMessages(messages);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleExplainSimpler(index: number) {
+    if (loading) return;
+    const target = messages[index];
+    if (!target || target.role !== "model") return;
+
+    setError(null);
+    setLoading(true);
+    try {
+      const question = messages
+        .slice(0, index)
+        .reverse()
+        .find((m) => m.role === "user");
+      const original = question?.text ?? "a tua última explicação";
+      const request = `Não entendi a tua última resposta sobre "${original.slice(0, 200)}". Podes explicar de um jeito mais simples, com um exemplo do dia a dia e passos mais curtos?`;
+      const reply = await askTutor(request, [], messages);
+      if (reply === null) return;
+      const next: ChatMessage[] = [
+        ...messages,
+        { role: "user" as const, text: request },
+        { role: "model" as const, text: reply },
+      ];
+      persistMessages(next);
+    } catch (err) {
+      setError(
+        err instanceof TutorError
+          ? err.message
+          : "Não consegui reformular agora. Tenta de novo daqui a pouco."
+      );
     } finally {
       setLoading(false);
     }
@@ -454,17 +496,27 @@ export default function Chat() {
             )}
             {m.text}
             {m.role === "model" && (
-              <button
-                onClick={() => handleSpeak(i, m.text)}
-                title={speakingMessageIndex === i ? "Parar leitura" : "Ouvir esta resposta"}
-                className={`mt-2 text-xs font-medium ${
-                  speakingMessageIndex === i
-                    ? "text-red-500"
-                    : "text-indigo-400 hover:text-indigo-600"
-                }`}
-              >
-                {speakingMessageIndex === i ? "⏹️ Parar" : "🔊 Ouvir"}
-              </button>
+              <span className="mt-2 flex items-center gap-3">
+                <button
+                  onClick={() => handleSpeak(i, m.text)}
+                  title={speakingMessageIndex === i ? "Parar leitura" : "Ouvir esta resposta"}
+                  className={`text-xs font-medium ${
+                    speakingMessageIndex === i
+                      ? "text-red-500"
+                      : "text-indigo-400 hover:text-indigo-600"
+                  }`}
+                >
+                  {speakingMessageIndex === i ? "⏹️ Parar" : "🔊 Ouvir"}
+                </button>
+                <button
+                  onClick={() => handleExplainSimpler(i)}
+                  disabled={loading}
+                  title="Não entendi — explica de um jeito mais simples"
+                  className="text-xs font-medium text-indigo-400 transition hover:text-indigo-600 disabled:opacity-50"
+                >
+                  🤔 Não entendi
+                </button>
+              </span>
             )}
           </div>
         ))}
