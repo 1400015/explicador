@@ -10,6 +10,7 @@ import {
   type TutorMode,
 } from "@/lib/settings";
 import { askTutorDirect } from "@/lib/gemini-client";
+import UsageStats from "./UsageStats";
 import {
   createPinHash,
   isValidPinFormat,
@@ -287,6 +288,10 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
         <p className="mb-4 text-sm text-gray-500">
           Secção para os pais. Configura como a app fala com a IA.
         </p>
+
+        <div className="mb-4">
+          <UsageStats />
+        </div>
 
         <label className="mb-1 block text-sm font-medium text-gray-700">
           Modo de ligação
