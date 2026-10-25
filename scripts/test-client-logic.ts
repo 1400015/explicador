@@ -240,6 +240,24 @@ async function main() {
   ok("msg quota menciona esperar", friendlyApiError(sdkErr(429, { error: { code: 429 } })).includes("minuto"));
   ok("msg rede menciona internet", friendlyApiError(new TypeError("Failed to fetch")).includes("internet"));
 
+  console.log("== gemini-http.ts (body REST correto + normalizeNativeError) ==");
+  const httpMod = await import("../lib/gemini-http");
+  ok("normalizeNativeError extrai status de texto", httpMod.normalizeNativeError(new Error("Response with status code 429")).status === 429);
+  ok("normalizeNativeError extrai status genérico", httpMod.normalizeNativeError(new Error("HTTP 401 error")).status === 401);
+  ok("normalizeNativeError sem status -> undefined", httpMod.normalizeNativeError(new Error("network down"))?.status === undefined);
+  ok("normalizeNativeError mantém erro já normalizado", (() => {
+    const e = new Error("x") as Error & { status?: number }; e.status = 400;
+    return httpMod.normalizeNativeError(e).status === 400;
+  })());
+  ok("makeApiError tem status e message JSON", (() => {
+    const e = httpMod.makeApiError(400, { error: { code: 400, message: "bad" } });
+    return e.status === 400 && e.message.includes('"code":400');
+  })());
+  // Verificar que o body REST usa "threshold" (não "blockThreshold") — extrair via source
+  const { readFileSync } = await import("node:fs");
+  const httpSrc = readFileSync(new URL("../lib/gemini-http.ts", import.meta.url), "utf-8");
+  ok("body REST usa 'threshold' (não blockThreshold)", httpSrc.includes("threshold:") && !httpSrc.includes("blockThreshold"));
+
   console.log(`\n✅ Todos os ${passed} testes passaram.`);
 }
 

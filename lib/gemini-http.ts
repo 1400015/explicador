@@ -62,11 +62,11 @@ function buildGeminiBody(params: {
       thinkingConfig: { thinkingLevel: THINKING_LEVEL, includeThoughts: false },
     },
     safetySettings: [
-      { category: "HARM_CATEGORY_HARASSMENT", blockThreshold: "BLOCK_ONLY_HIGH" },
-      { category: "HARM_CATEGORY_HATE_SPEECH", blockThreshold: "BLOCK_ONLY_HIGH" },
-      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", blockThreshold: "BLOCK_LOW_AND_ABOVE" },
-      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", blockThreshold: "BLOCK_ONLY_HIGH" },
-      { category: "HARM_CATEGORY_CIVIC_INTEGRITY", blockThreshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_LOW_AND_ABOVE" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "BLOCK_ONLY_HIGH" },
     ],
   };
 }
@@ -96,14 +96,40 @@ async function callGeminiRaw(apiKey: string, body: Record<string, unknown>): Pro
 
   // Erro HTTP real (401 chave, 429 quota, 503, etc.) — devolve o body para classificação
   if (res.status >= 400) {
-    const err = new Error(
-      typeof res.data === "string" ? res.data : JSON.stringify(res.data)
-    ) as Error & { status?: number };
-    err.status = res.status;
-    throw err;
+    throw makeApiError(res.status, res.data);
   }
 
   return res.data as GeminiResponse;
+}
+
+/**
+ * Cria um erro com .status (HTTP) e .message = JSON do body, no mesmo formato
+ * do ApiError do SDK — para o classificador (lib/api-error.ts) funcionar igual.
+ */
+export function makeApiError(status: number, data: unknown): Error & { status: number } {
+  const message = typeof data === "string" ? data : JSON.stringify(data);
+  const err = new Error(message) as Error & { status: number };
+  err.status = status;
+  return err;
+}
+
+/**
+ * Normaliza erros vindos do CapacitorHttp nativo (Android).
+ * No Android, respostas HTTP de erro (4xx/5xx) chegam como exceção (rejeição),
+ * não como HttpResponse — e o código vem dentro do texto da mensagem.
+ * Convertemos para o formato { status, message: <json> } que o classificador entende.
+ */
+export function normalizeNativeError(error: unknown): Error & { status?: number } {
+  if (error instanceof Error && typeof (error as { status?: number }).status === "number") {
+    return error as Error & { status: number };
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  // Procura "Response with status code 400" ou similar no texto
+  const match = message.match(/status code (\d{3})/i) ?? message.match(/\b(\d{3})\b/);
+  const status = match ? parseInt(match[1], 10) : undefined;
+  const err = new Error(message) as Error & { status?: number };
+  if (status !== undefined) err.status = status;
+  return err;
 }
 
 export function isNativeHttpAvailable(): boolean {

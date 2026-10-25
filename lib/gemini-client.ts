@@ -9,7 +9,7 @@ import {
   GEMINI_KEY_PATTERN,
 } from "./safety";
 import { friendlyApiError } from "./api-error";
-import { generateWithNativeHttp, moderationCheckNativeHttp, isNativeHttpAvailable } from "./gemini-http";
+import { generateWithNativeHttp, moderationCheckNativeHttp, isNativeHttpAvailable, normalizeNativeError } from "./gemini-http";
 import {
   MAX_HISTORY_MESSAGES,
   MAX_IMAGE_BYTES,
@@ -148,10 +148,16 @@ export async function askTutorDirect(params: {
         return "N\u00e3o consegui ver direito essa foto. Tenta tirar outra com mais luz e mais de perto? \ud83d\udcf8";
       }
     } catch (err) {
-      lastError = err;
-      // Se for erro de rede (sem status HTTP), tenta o SDK como fallback
-      const status = (err as { status?: number })?.status;
-      if (status !== undefined) throw err; // erro real da API (401/429/...) — não vale a pena repetir
+      // No Android, erros HTTP do CapacitorHttp vêm como exceção (sem .status).
+      // Normalizamos para { status, message: <json> } para o classificador funcionar.
+      const normalized = normalizeNativeError(err);
+      lastError = normalized;
+      // Se for erro de rede (sem status HTTP), tenta o SDK como fallback.
+      // Se for erro real da API (400/401/429/...), traduz já para mensagem amigável —
+      // este throw está FORA do try exterior, por isso o JSON cru não pode escapar.
+      if (normalized.status !== undefined) {
+        throw new TutorError(friendlyApiError(normalized)); // erro real da API — não vale a pena repetir
+      }
       // else: cai para o SDK abaixo
     }
   }
