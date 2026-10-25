@@ -10,6 +10,7 @@ import { isNativeApp, loadSettings, type AppSettings } from "@/lib/settings";
 import { upsertConversation, type StoredMessage } from "@/lib/conversations";
 import { needsSupportBanner } from "@/lib/support";
 import ConversationList from "./ConversationList";
+import OfflineTips from "./OfflineTips";
 import SupportBanner from "./SupportBanner";
 import Settings from "./Settings";
 import {
@@ -115,6 +116,7 @@ export default function Chat() {
   const [conversationId, setConversationId] = useState<string>(newConversationId);
   const [listening, setListening] = useState(false);
   const [supportDismissed, setSupportDismissed] = useState(false);
+  const [offlineTipsOpen, setOfflineTipsOpen] = useState(false);
   const [speakingMessageIndex, setSpeakingMessageIndex] = useState<number | null>(null);
   const speechSupported = isSpeechRecognitionAvailable();
   const showSupportBanner =
@@ -326,6 +328,9 @@ export default function Chat() {
           ? err.message
           : "Não consegui falar com o tutor agora. Verifica sua internet e tenta de novo."
       );
+      if (!(err instanceof TutorError)) {
+        setOfflineTipsOpen(true);
+      }
       persistMessages(messages);
     } finally {
       setLoading(false);
@@ -477,6 +482,10 @@ export default function Chat() {
         )}
 
         {showSupportBanner && <SupportBanner onClose={() => setSupportDismissed(true)} />}
+
+        {offlineTipsOpen && !loading && (
+          <OfflineTips subject={subject} onClose={() => setOfflineTipsOpen(false)} />
+        )}
 
         <div ref={bottomRef} />
       </main>
