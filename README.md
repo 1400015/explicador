@@ -90,7 +90,8 @@ A lógica de segurança é **partilhada** entre servidor (`app/api/chat/route.ts
 ## Proteções incluídas
 
 - Chave da API no servidor por defeito (proxy via `/api/chat`); modo "Esta app" opcional com aviso
-- Validação de formato da chave (padrão `AIza...`) antes de chamar a API
+- Validação de formato da chave antes de chamar a API — aceita os dois formatos da Google:
+  antiga (`AIza...`) e nova "Auth key" (`AQ.Ab...`, emitida pelo AI Studio desde 2026)
 - Chave guardada no telemóvel nunca aparece no histórico nem é mostrada por defeito
 - **PIN de 4-6 dígitos protege as Definições** (abrir, alterar/apagar chave, alterar PIN)
 - PIN guardado apenas como hash SHA-256 + salt — nunca em texto simples

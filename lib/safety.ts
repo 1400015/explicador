@@ -34,4 +34,7 @@ export function outputIsInappropriate(text: string): boolean {
 export const SAFE_FALLBACK =
   "Hmm, essa resposta n\u00e3o ficou boa para a tua idade. Vamos tentar outra coisa? Pensa numa pergunta sobre as tuas mat\u00e9rias! \ud83d\udcda";
 
-export const GEMINI_KEY_PATTERN = /^AIza[0-9A-Za-z_-]{35}$/;
+// A Google mudou o formato das chaves em 2026: além das "Standard keys" antigas
+// (AIza + 35 caracteres), o AI Studio emite "Auth keys" novas no formato AQ.Ab...
+// Ambas funcionam no endpoint nativo da Gemini (x-goog-api-key). Aceitamos as duas.
+export const GEMINI_KEY_PATTERN = /^(AIza[0-9A-Za-z_-]{35}|AQ\.[0-9A-Za-z._-]{10,500})$/;

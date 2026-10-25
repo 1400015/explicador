@@ -3,15 +3,20 @@
 ## ✅ Publicado no GitHub
 
 - **Repositório (privado):** https://github.com/1400015/explicador
-- **Versão atual:** `v1.1.0` ✅ *(recomendada — instala esta)*
+- **Versão atual:** `v1.1.1` ✅ *(recomendada — instala esta)*
 - **Releases:** https://github.com/1400015/explicador/releases
-  - **v1.1.0** — app completa: conversas guardadas, banner de apoio, botão "Não entendi",
+  - **v1.1.1** — aceita as **novas chaves API da Google (formato `AQ....`)**, além das antigas `AIza...` *(corrige "não parece válida")*
+  - v1.1.0 — app completa: conversas guardadas, banner de apoio, botão "Não entendi",
     verificador de cálculo, dicas offline, estatísticas para os pais, segurança reforçada
   - v1.0.1 — app Android autónoma (sem servidor)
   - v1.0.0 — primeira versão (tinha bug do ecrã branco)
-- **APKs para download direto** (na raiz do repositório, versão **1.1.0**):
+- **APKs para download direto** (na raiz do repositório, versão **1.1.1**):
   - [⬇️ tutor-ia-release.apk](https://github.com/1400015/explicador/raw/main/tutor-ia-release.apk) — versão final assinada (~6,5 MB)
   - [⬇️ tutor-ia-debug.apk](https://github.com/1400015/explicador/raw/main/tutor-ia-debug.apk) — versão de teste (~8,0 MB)
+
+> 🚨 **Se a tua chave dá "não parece válida":** a Google mudou o formato das chaves em 2026 —
+> as novas começam por **`AQ.`** em vez de `AIza`. A v1.1.0 rejeitava-as. **Instala a v1.1.1**,
+> que aceita os dois formatos. Não precisas de revogar a chave nem gerar outra.
 
 ## ⚠️ IMPORTANTE: atualiza a versão antiga primeiro
 
@@ -19,7 +24,7 @@ Se já tens a app instalada (v1.0.x), **a v1.1.0 instala por cima normalmente** 
 assinatura, versionCode superior) — o Android aceita a atualização direta.
 A v1.0.0 (ecrã branco) é que deve ser **desinstalada** primeiro.
 
-## Como instalar a app no telemóvel (v1.1.0)
+## Como instalar a app no telemóvel (v1.1.1)
 
 1. Abre o link do **tutor-ia-release.apk** no browser do telemóvel e descarrega
    (ou transfere o ficheiro por USB/WhatsApp/email)
@@ -30,6 +35,7 @@ A v1.0.0 (ecrã branco) é que deve ser **desinstalada** primeiro.
 5. Toca em **⚙️ Definições** (canto superior direito):
    - Escolhe o modo **📱 Esta app**
    - Cola a tua **chave API do Google Gemini** (obtém em https://aistudio.google.com/apikey)
+     — pode começar por `AIza...` (antiga) ou `AQ....` (nova), ambas funcionam ✅
    - Toca em **Guardar**
    - (Opcional, recomendado) Cria um **PIN** de 4–6 dígitos para proteger as Definições
 6. Pronto! A app já responde — só precisa de internet no telemóvel 📶

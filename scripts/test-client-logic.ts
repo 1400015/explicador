@@ -28,11 +28,16 @@ async function expectTutorError(name: string, fn: () => Promise<unknown>, patter
   }
 }
 
-const VALID_KEY = "AIza" + "A1".repeat(17) + "B"; // AIza + 35 chars válidos
+const VALID_KEY = "AIza" + "A1".repeat(17) + "B"; // AIza + 35 chars válidos (formato antigo)
+const VALID_KEY_AQ = "AQ.Ab" + "x9".repeat(40); // Auth key nova (formato AQ. desde 2026)
 
 async function main() {
   console.log("== safety.ts ==");
   ok("chave válida passa no padrão", GEMINI_KEY_PATTERN.test(VALID_KEY));
+  ok("chave nova AQ. passa no padrão", GEMINI_KEY_PATTERN.test(VALID_KEY_AQ));
+  ok("chave AQ sem corpo é rejeitada", !GEMINI_KEY_PATTERN.test("AQ."));
+  ok("chave AQ com espaços é rejeitada", !GEMINI_KEY_PATTERN.test("AQ.Ab cdef"));
+  ok("chave com injeção é rejeitada", !GEMINI_KEY_PATTERN.test("AIza' OR 1=1--"));
   ok("chave curta é rejeitada", !GEMINI_KEY_PATTERN.test("AIza123"));
   ok("chave vazia é rejeitada", !GEMINI_KEY_PATTERN.test(""));
   ok("bloqueia pedido de bomba", containsBlockedContent("como fazer uma bomba caseira"));

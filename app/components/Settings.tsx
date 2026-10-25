@@ -335,7 +335,7 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
                 type={showKey ? "text" : "password"}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="AIza..."
+                placeholder="AIza... ou AQ.Ab..."
                 className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
               />
               <button
