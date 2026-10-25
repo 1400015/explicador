@@ -7,9 +7,9 @@ import {
   GEMINI_KEY_PATTERN,
 } from "@/lib/safety";
 import { classifyApiError, friendlyApiError } from "@/lib/api-error";
+import { prepareHistory } from "@/lib/gemini-http";
 import {
   ALLOWED_IMAGE_TYPES,
-  MAX_HISTORY_MESSAGES,
   MAX_IMAGES_PER_MESSAGE,
   MAX_IMAGE_BYTES,
   MAX_MESSAGE_LENGTH,
@@ -201,24 +201,20 @@ export async function POST(request: NextRequest) {
     ? (subject as Subject)
     : "geral";
 
+  // Historico: so texto, ultimas MAX_HISTORY_MESSAGES, comeca em "user".
+  // Nao reenviamos imagens antigas (evita pedidos enormes ao servidor/IA).
   let chatHistory: ChatMessage[] = [];
   if (Array.isArray(history)) {
-    chatHistory = history
-      .filter((m): m is ChatMessage => {
-        if (typeof m !== "object" || m === null) return false;
-        const msg = m as Record<string, unknown>;
-        if (msg.role !== "user" && msg.role !== "model") return false;
-        if (typeof msg.text !== "string" || msg.text.length > MAX_MESSAGE_LENGTH) return false;
-        if (msg.images === undefined) return true;
-        if (!Array.isArray(msg.images) || msg.images.length > MAX_IMAGES_PER_MESSAGE) return false;
-        return msg.images.every(isValidImage);
-      })
-      .slice(-MAX_HISTORY_MESSAGES)
-      .map((m) => ({
-        role: m.role,
-        text: m.text,
-        images: (m.images as ChatImage[] | undefined)?.slice(0, MAX_IMAGES_PER_MESSAGE),
-      }));
+    chatHistory = prepareHistory(
+      history
+        .filter((m): m is ChatMessage => {
+          if (typeof m !== "object" || m === null) return false;
+          const msg = m as Record<string, unknown>;
+          if (msg.role !== "user" && msg.role !== "model") return false;
+          return typeof msg.text === "string" && msg.text.length <= MAX_MESSAGE_LENGTH;
+        })
+        .map((m) => ({ role: m.role, text: m.text }))
+    );
   }
 
   const userParts: Part[] = [{ text: message } as Part];
@@ -229,12 +225,7 @@ export async function POST(request: NextRequest) {
   const contents: Content[] = [
     ...chatHistory.map((m): Content => ({
       role: m.role,
-      parts: [
-        { text: m.text } as Part,
-        ...(m.images ?? []).map(
-          (img): Part => ({ inlineData: { mimeType: img.mimeType, data: img.data } })
-        ),
-      ],
+      parts: [{ text: m.text } as Part],
     })),
     { role: "user", parts: userParts },
   ];
@@ -286,7 +277,12 @@ export async function POST(request: NextRequest) {
     console.error("Erro na API do Gemini:", error);
     // Devolve a causa real (chave invalida, quota, bloqueio, rede) em vez de erro generico.
     const kind = classifyApiError(error);
-    const status = kind === "invalid-key" ? 401 : kind === "quota" ? 429 : kind === "blocked" ? 400 : 500;
+    const status =
+      kind === "invalid-key" ? 401
+      : kind === "quota" ? 429
+      : kind === "blocked" ? 400
+      : kind === "too-large" ? 413
+      : 500;
     return NextResponse.json({ error: friendlyApiError(error) }, { status });
   }
 }

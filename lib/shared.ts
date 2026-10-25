@@ -17,4 +17,6 @@ export const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as 
 
 export const RATE_LIMIT_WINDOW_MS = 60_000;
 export const RATE_LIMIT_MAX_REQUESTS = 20;
-export const MAX_OUTPUT_TOKENS = 512;
+// Nota: nos modelos com reasoning (Gemini 3.x), os tokens de pensamento contam
+// para o maxOutputTokens — 512 era pouco e podia cortar a resposta a meio.
+export const MAX_OUTPUT_TOKENS = 1024;

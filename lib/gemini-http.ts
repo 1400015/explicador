@@ -2,7 +2,7 @@
 
 import { CapacitorHttp, type HttpResponse } from "@capacitor/core";
 import { MODEL, THINKING_LEVEL, buildSystemPrompt, type Subject } from "./prompt";
-import { MAX_OUTPUT_TOKENS, type ChatImage, type ChatMessage } from "./shared";
+import { MAX_HISTORY_MESSAGES, MAX_OUTPUT_TOKENS, type ChatImage, type ChatMessage } from "./shared";
 import { TutorError } from "./gemini-client";
 
 /**
@@ -25,7 +25,26 @@ function isNative(): boolean {
   );
 }
 
-function buildGeminiBody(params: {
+/**
+ * Prepara o historico para enviar a API:
+ * - so as ultimas MAX_HISTORY_MESSAGES mensagens;
+ * - sem imagens antigas (fotos em base64 tornam o pedido enorme e podem
+ *   provocar erro 413 ou timeout — so a mensagem atual leva fotos);
+ * - comeca sempre por uma mensagem "user" (a API espera a conversa a
+ *   comecar no utilizador; se a ultima resposta ficou por guardar, cortamos).
+ */
+export function prepareHistory(history: ChatMessage[]): ChatMessage[] {
+  const textOnly = history
+    .filter((m) => (m.role === "user" || m.role === "model") && typeof m.text === "string")
+    .map((m) => ({ role: m.role, text: m.text }));
+  const trimmed = textOnly.slice(-MAX_HISTORY_MESSAGES);
+  if (trimmed.length > 0 && trimmed[0].role !== "user") {
+    trimmed.shift();
+  }
+  return trimmed;
+}
+
+export function buildGeminiBody(params: {
   message: string;
   history: ChatMessage[];
   subject: Subject;
@@ -34,14 +53,9 @@ function buildGeminiBody(params: {
   const { message, history, subject, images } = params;
 
   const contents = [
-    ...history.slice(-20).map((m) => ({
+    ...prepareHistory(history).map((m) => ({
       role: m.role,
-      parts: [
-        { text: m.text },
-        ...(m.images ?? []).map((img) => ({
-          inlineData: { mimeType: img.mimeType, data: img.data },
-        })),
-      ],
+      parts: [{ text: m.text }],
     })),
     {
       role: "user",
@@ -90,7 +104,7 @@ async function callGeminiRaw(apiKey: string, body: Record<string, unknown>): Pro
     },
     data: body,
     connectTimeout: 20_000,
-    readTimeout: 60_000,
+    readTimeout: 120_000,
     responseType: "json",
   });
 

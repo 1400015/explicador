@@ -8,8 +8,9 @@ export type ApiErrorKind =
   | "quota" // 429 — quota/rate limit excedido
   | "model" // 404 — modelo não existe ou sem acesso
   | "blocked" // 400 com SAFETY — a resposta foi bloqueada pelos filtros
-  | "overloaded" // 503 — serviço sobrecarregado
-  | "network" // falha de fetch — sem internet, DNS, CORS, etc.
+  | "overloaded" // 500/502/503/504 — serviço sobrecarregado ou a demorar
+  | "too-large" // 408/413 — pedido demasiado grande (fotos/mensagem)
+  | "network" // falha de fetch/timeout — sem internet, DNS, CORS, etc.
   | "unknown";
 
 type GeminiErrorBody = {
@@ -59,19 +60,42 @@ export function classifyApiError(error: unknown): ApiErrorKind {
   if (bodyStatusText === "RESOURCE_EXHAUSTED") return "quota";
   if (bodyStatusText === "PERMISSION_DENIED" || bodyStatusText === "UNAUTHENTICATED") return "invalid-key";
   if (bodyStatusText === "NOT_FOUND") return "model";
-  if (bodyStatusText === "UNAVAILABLE") return "overloaded";
+  if (bodyStatusText === "UNAVAILABLE" || bodyStatusText === "DEADLINE_EXCEEDED") return "overloaded";
 
   if (bodyReason?.includes("SAFETY") || message.includes("SAFETY")) return "blocked";
+  // Pedido demasiado grande (fotos em base64 no historico, etc.)
+  if (
+    effectiveStatus === 413 ||
+    effectiveStatus === 408 ||
+    /payload too large|request entity too large|request too large/i.test(message)
+  ) {
+    return "too-large";
+  }
   if (effectiveStatus === 400 || effectiveStatus === 401 || effectiveStatus === 403) {
     return "invalid-key";
   }
   if (effectiveStatus === 429) return "quota";
   if (effectiveStatus === 404) return "model";
-  if (effectiveStatus === 503) return "overloaded";
+  // Erros do lado do servidor da Google que sao temporarios
+  if (
+    effectiveStatus === 500 ||
+    effectiveStatus === 502 ||
+    effectiveStatus === 503 ||
+    effectiveStatus === 504 ||
+    effectiveStatus === 508
+  ) {
+    return "overloaded";
+  }
 
-  // Sem status HTTP: se for erro de fetch/rede -> "network", senão "unknown"
+  // Sem status HTTP: timeout/rede -> "network", senao "unknown"
+  const errName = error instanceof Error ? error.name : "";
+  const looksLikeTimeout =
+    /timeout|timed out|deadline|aborterror|socket hang up|econnreset|econnrefused|etimedout/i.test(
+      `${errName} ${message}`
+    );
   if (
     error instanceof TypeError ||
+    looksLikeTimeout ||
     message.includes("Failed to fetch") ||
     message.includes("NetworkError") ||
     message.includes("network") ||
@@ -92,9 +116,11 @@ const MESSAGES: Record<ApiErrorKind, string> = {
   blocked:
     "A tua pergunta foi bloqueada pelos filtros de segurança. Tenta perguntar de outra forma, sobre as tuas matérias. 📚",
   overloaded:
-    "O serviço da IA está sobrecarregado. Tenta de novo daqui a pouco. 🔄",
+    "O serviço da IA está sobrecarregado ou a demorar demasiado. Espera um bocadinho e tenta de novo. 🔁",
+  "too-large":
+    "A tua mensagem com fotos ficou demasiado grande. Tenta com menos fotos ou começa uma conversa nova. 📸",
   network:
-    "Não consegui ligar à internet. Confere o Wi-Fi/dados móveis e tenta de novo. 📶",
+    "Não consegui ligar à internet (ou a ligação foi abaixo). Confere o Wi-Fi/dados móveis e tenta de novo. 📶",
   unknown:
     "Tive um probleminha para responder. Tenta de novo daqui a pouco. 🤏",
 };

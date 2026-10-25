@@ -258,6 +258,53 @@ async function main() {
   const httpSrc = readFileSync(new URL("../lib/gemini-http.ts", import.meta.url), "utf-8");
   ok("body REST usa 'threshold' (não blockThreshold)", httpSrc.includes("threshold:") && !httpSrc.includes("blockThreshold"));
 
+  console.log("== v1.1.5: historico sem imagens + user-first ==");
+  const { prepareHistory, buildGeminiBody } = httpMod as unknown as {
+    prepareHistory: (h: Array<{ role: "user" | "model"; text: string; images?: unknown[] }>) => Array<{ role: string; text: string }>;
+    buildGeminiBody: (p: { message: string; history: unknown[]; subject: string; images: unknown[] }) => { contents: Array<{ role: string; parts: Array<Record<string, unknown>> }> };
+  };
+  const img = { mimeType: "image/jpeg", data: "QUJD" };
+  const histWithImgs = [
+    { role: "user" as const, text: "olha esta foto", images: [img] },
+    { role: "model" as const, text: "o que queres saber?", images: [img, img] },
+    { role: "user" as const, text: "a equacao", images: [img] },
+  ];
+  const prepared = prepareHistory(histWithImgs);
+  ok("prepareHistory remove imagens do historico", prepared.every((m) => (m as { images?: unknown }).images === undefined));
+  ok("prepareHistory comeca por user", prepared[0].role === "user");
+  const oddHist = [
+    { role: "model" as const, text: "resposta antiga" },
+    { role: "user" as const, text: "pergunta" },
+  ];
+  ok("prepareHistory corta model inicial", prepareHistory(oddHist)[0].role === "user");
+  const longHist = Array.from({ length: 30 }, (_, i) => ({
+    role: (i % 2 === 0 ? "user" : "model") as "user" | "model",
+    text: `msg ${i}`,
+  }));
+  ok("prepareHistory limita a 20 mensagens", prepareHistory(longHist).length === 20);
+  const body = buildGeminiBody({ message: "pergunta nova", history: histWithImgs, subject: "geral", images: [img] });
+  const histParts = body.contents.slice(0, -1).flatMap((c) => c.parts);
+  ok("buildGeminiBody nao envia imagens do historico", histParts.every((p) => p.inlineData === undefined));
+  ok("buildGeminiBody envia imagens da mensagem atual", body.contents.at(-1)!.parts.some((p) => p.inlineData !== undefined));
+  ok("buildGeminiBody termina em user", body.contents.at(-1)!.role === "user");
+
+  console.log("== v1.1.5: classifyApiError novos mapeamentos ==");
+  ok("413 -> too-large", classifyApiError(sdkErr(413, { error: { code: 413, message: "payload too large" } })) === "too-large");
+  ok("408 -> too-large", classifyApiError(sdkErr(408, { error: { code: 408 } })) === "too-large");
+  ok("500 -> overloaded", classifyApiError(sdkErr(500, { error: { code: 500, status: "INTERNAL", message: "boom" } })) === "overloaded");
+  ok("502 -> overloaded", classifyApiError(sdkErr(502, { error: { code: 502 } })) === "overloaded");
+  ok("504 -> overloaded", classifyApiError(sdkErr(504, { error: { code: 504 } })) === "overloaded");
+  ok("DEADLINE_EXCEEDED -> overloaded", classifyApiError(sdkErr(400, { error: { code: 400, status: "DEADLINE_EXCEEDED", message: "slow" } })) === "overloaded");
+  ok("timeout na mensagem -> network", classifyApiError(new Error("Error: timeout of 120000ms exceeded")) === "network");
+  ok("AbortError -> network", (() => {
+    const e = new Error("The operation was aborted"); e.name = "AbortError";
+    return classifyApiError(e) === "network";
+  })());
+  ok("socket hang up -> network", classifyApiError(new Error("socket hang up")) === "network");
+  ok("msg too-large menciona fotos", friendlyApiError(sdkErr(413, { error: { code: 413 } })).includes("fotos"));
+  ok("msg overloaded menciona esperar", friendlyApiError(sdkErr(503, { error: { code: 503 } })).toLowerCase().includes("espera"));
+  ok("msg network menciona Wi-Fi", friendlyApiError(new TypeError("Failed to fetch")).includes("Wi-Fi"));
+
   console.log(`\n✅ Todos os ${passed} testes passaram.`);
 }
 

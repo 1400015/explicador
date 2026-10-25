@@ -9,9 +9,8 @@ import {
   GEMINI_KEY_PATTERN,
 } from "./safety";
 import { friendlyApiError } from "./api-error";
-import { generateWithNativeHttp, moderationCheckNativeHttp, isNativeHttpAvailable, normalizeNativeError } from "./gemini-http";
+import { generateWithNativeHttp, moderationCheckNativeHttp, isNativeHttpAvailable, normalizeNativeError, prepareHistory } from "./gemini-http";
 import {
-  MAX_HISTORY_MESSAGES,
   MAX_IMAGE_BYTES,
   MAX_IMAGES_PER_MESSAGE,
   MAX_MESSAGE_LENGTH,
@@ -55,21 +54,14 @@ function isValidImage(img: ChatImage): boolean {
 }
 
 function buildContents(history: ChatMessage[], message: string, images: ChatImage[]): Content[] {
-  const past = history
-    .filter((m) => (m.role === "user" || m.role === "model") && typeof m.text === "string")
-    .slice(-MAX_HISTORY_MESSAGES)
-    .map(
-      (m): Content => ({
-        role: m.role,
-        parts: [
-          { text: m.text } as Part,
-          ...(m.images ?? [])
-            .filter(isValidImage)
-            .slice(0, MAX_IMAGES_PER_MESSAGE)
-            .map((img): Part => ({ inlineData: { mimeType: img.mimeType, data: img.data } })),
-        ],
-      })
-    );
+  // prepareHistory: so texto, ultimas MAX_HISTORY_MESSAGES, comeca em "user".
+  // As imagens do historico nao sao reenviadas (evita pedidos enormes).
+  const past = prepareHistory(history).map(
+    (m): Content => ({
+      role: m.role,
+      parts: [{ text: m.text } as Part],
+    })
+  );
 
   const userParts: Part[] = [{ text: message } as Part];
   for (const img of images) {
