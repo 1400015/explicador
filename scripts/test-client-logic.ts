@@ -197,6 +197,24 @@ async function main() {
     return daily.length === 7;
   })());
 
+  console.log("== calc-check.ts ==");
+  const { checkCalculation, calcFeedback } = await import("../lib/calc-check");
+  ok("conta certa", checkCalculation("12*4+3 = 51").kind === "ok");
+  ok("conta errada", checkCalculation("12*4+3 = 52").kind === "wrong");
+  ok("vírgula decimal", checkCalculation("2,5 + 2,5 = 5").kind === "ok");
+  ok("parênteses", checkCalculation("(2+3)*4 = 20").kind === "ok");
+  ok("divisão", checkCalculation("100/4 = 25").kind === "ok");
+  ok("precedência errada detetada", checkCalculation("2+3*4 = 20").kind === "wrong");
+  ok("texto normal não é conta", checkCalculation("o que é fotossíntese?").kind === "not-calc");
+  ok("expressão sem resultado não é conta", checkCalculation("quanto é 2+2?").kind === "not-calc");
+  ok("letras não são conta", checkCalculation("abc = 1").kind === "not-calc");
+  ok("divisão por zero ignorada", checkCalculation("5/0 = 0").kind === "not-calc");
+  ok("feedback certo", calcFeedback({ kind: "ok" })?.includes("✅") ?? false);
+  ok("feedback errado não revela resultado", (() => {
+    const f = calcFeedback({ kind: "wrong", expected: 14 });
+    return f !== null && !f.includes("14");
+  })());
+
   console.log(`\n✅ Todos os ${passed} testes passaram.`);
 }
 

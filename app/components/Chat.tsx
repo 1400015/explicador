@@ -10,6 +10,7 @@ import { isNativeApp, loadSettings, type AppSettings } from "@/lib/settings";
 import { upsertConversation, type StoredMessage } from "@/lib/conversations";
 import { needsSupportBanner } from "@/lib/support";
 import { recordQuestion } from "@/lib/stats";
+import { calcFeedback, checkCalculation } from "@/lib/calc-check";
 import ConversationList from "./ConversationList";
 import OfflineTips from "./OfflineTips";
 import SupportBanner from "./SupportBanner";
@@ -320,6 +321,19 @@ export default function Chat() {
     setInput("");
 
     const images = pendingImages.map((p) => p.image);
+
+    // Verificador de cálculo: "12*4+3 = 51" responde localmente, sem IA.
+    if (images.length === 0) {
+      const calcResult = checkCalculation(text);
+      const feedback = calcFeedback(calcResult);
+      if (feedback !== null) {
+        void recordQuestion(subject);
+        const calcMessages: ChatMessage[] = [...messages, { role: "user", text }];
+        persistMessages([...calcMessages, { role: "model", text: feedback }]);
+        return;
+      }
+    }
+
     void recordQuestion(subject);
     const newMessages: ChatMessage[] = [...messages, { role: "user", text, images }];
     persistMessages(newMessages);
