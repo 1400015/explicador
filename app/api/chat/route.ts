@@ -66,25 +66,36 @@ function isRateLimited(ip: string): boolean {
 
 // 3.ª camada: a própria IA verifica se a resposta é adequada para 12 anos.
 async function moderationCheck(client: GoogleGenAI, text: string): Promise<boolean> {
-  try {
-    const res = await client.models.generateContent({
-      model: MODEL,
-      contents: `Avalia se o TEXTO abaixo é adequado para uma criança de 12 anos (sem violência, sexo, ódio, drogas ou instruções perigosas). Responde apenas com a palavra SIM ou NAO.
+  const prompt = `Avalia se o TEXTO abaixo é adequado para uma criança de 12 anos (sem violência, sexo, ódio, drogas ou instruções perigosas). Responde apenas com a palavra SIM ou NAO.
 
 TEXTO:
 """
 ${text.slice(0, 2000)}
-"""`,
-      config: {
-        thinkingConfig: { thinkingLevel: "LOW" as never },
-        maxOutputTokens: 16,
-      },
-    });
-    return (res.text ?? "").trim().toUpperCase().startsWith("SIM");
-  } catch {
-    // se a moderação falhar, deixamos passar (as outras 2 camadas já atuaram)
-    return true;
+"""`;
+
+  // 1 retry antes de desistir (falhas de rede transitórias)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await client.models.generateContent({
+        model: MODEL,
+        contents: prompt,
+        config: {
+          thinkingConfig: { thinkingLevel: "LOW" as never },
+          maxOutputTokens: 16,
+        },
+      });
+      return (res.text ?? "").trim().toUpperCase().startsWith("SIM");
+    } catch (err) {
+      if (attempt === 0) {
+        console.warn("Moderação falhou (1ª tentativa), tentando de novo:", err instanceof Error ? err.message : err);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      } else {
+        // se a moderação continuar a falhar, deixamos passar (as outras 2 camadas já atuaram)
+        console.warn("Moderação falhou nas 2 tentativas; resposta passa pelas camadas 1 e 2");
+      }
+    }
   }
+  return true;
 }
 
 function isValidImage(img: unknown): img is ChatImage {

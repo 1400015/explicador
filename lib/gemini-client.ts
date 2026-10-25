@@ -78,24 +78,32 @@ function buildContents(history: ChatMessage[], message: string, images: ChatImag
 }
 
 async function moderationCheck(client: GoogleGenAI, text: string): Promise<boolean> {
-  try {
-    const res = await client.models.generateContent({
-      model: MODEL,
-      contents: `Avalia se o TEXTO abaixo \u00e9 adequado para uma crian\u00e7a de 12 anos (sem viol\u00eancia, sexo, \u00f3dio, drogas ou instru\u00e7\u00f5es perigosas). Responde apenas com a palavra SIM ou NAO.
+  const prompt = `Avalia se o TEXTO abaixo \u00e9 adequado para uma crian\u00e7a de 12 anos (sem viol\u00eancia, sexo, \u00f3dio, drogas ou instru\u00e7\u00f5es perigosas). Responde apenas com a palavra SIM ou NAO.
 
 TEXTO:
 """
 ${text.slice(0, 2000)}
-"""`,
-      config: {
-        thinkingConfig: { thinkingLevel: "LOW" as never },
-        maxOutputTokens: 16,
-      },
-    });
-    return (res.text ?? "").trim().toUpperCase().startsWith("SIM");
-  } catch {
-    return true;
+"""`;
+
+  // 1 retry antes de desistir (falhas de rede transitórias no telemóvel)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await client.models.generateContent({
+        model: MODEL,
+        contents: prompt,
+        config: {
+          thinkingConfig: { thinkingLevel: "LOW" as never },
+          maxOutputTokens: 16,
+        },
+      });
+      return (res.text ?? "").trim().toUpperCase().startsWith("SIM");
+    } catch {
+      if (attempt === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
   }
+  return true;
 }
 
 export async function askTutorDirect(params: {
