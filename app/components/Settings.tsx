@@ -240,6 +240,10 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
             <input
               type="password"
               inputMode="numeric"
+              autoComplete="one-time-code"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
               autoFocus
               value={lockPin}
               onChange={(e) => setLockPin(e.target.value.replace(/\D/g, "").slice(0, PIN_MAX_LENGTH))}
@@ -336,6 +340,12 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder="AIza... ou AQ.Ab..."
+                // Sem correção/sugestões: a chave é código, o teclado não deve alterar nada
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                inputMode="text"
                 className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
               />
               <button
@@ -364,6 +374,10 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
               value={serverUrl}
               onChange={(e) => setServerUrl(e.target.value)}
               placeholder="https://teu-servidor.com"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
               className="mb-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
             />
             <p className="mb-4 text-xs text-gray-400">
@@ -392,6 +406,10 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
               <input
                 type="password"
                 inputMode="numeric"
+                autoComplete="one-time-code"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 autoFocus
                 value={confirmPin}
                 onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, PIN_MAX_LENGTH))}
@@ -458,6 +476,10 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
                 <input
                   type="password"
                   inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   value={currentPin}
                   onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, "").slice(0, PIN_MAX_LENGTH))}
                   placeholder="PIN atual"
@@ -467,6 +489,10 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
               <input
                 type="password"
                 inputMode="numeric"
+                autoComplete="one-time-code"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 value={newPin}
                 onChange={(e) => setNewPin(e.target.value.replace(/\D/g, "").slice(0, PIN_MAX_LENGTH))}
                 placeholder={hasPin ? "Novo PIN" : "Novo PIN (4-6 dígitos)"}
@@ -475,6 +501,10 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
               <input
                 type="password"
                 inputMode="numeric"
+                autoComplete="one-time-code"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 value={newPinConfirm}
                 onChange={(e) => setNewPinConfirm(e.target.value.replace(/\D/g, "").slice(0, PIN_MAX_LENGTH))}
                 placeholder="Repetir novo PIN"

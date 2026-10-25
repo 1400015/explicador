@@ -6,6 +6,7 @@ import {
   SAFE_FALLBACK,
   GEMINI_KEY_PATTERN,
 } from "@/lib/safety";
+import { classifyApiError, friendlyApiError } from "@/lib/api-error";
 import {
   ALLOWED_IMAGE_TYPES,
   MAX_HISTORY_MESSAGES,
@@ -283,9 +284,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ reply: text });
   } catch (error) {
     console.error("Erro na API do Gemini:", error);
-    return NextResponse.json(
-      { error: "Tive um probleminha para responder. Tenta de novo daqui a pouco? 🤏" },
-      { status: 500 }
-    );
+    // Devolve a causa real (chave invalida, quota, bloqueio, rede) em vez de erro generico.
+    const kind = classifyApiError(error);
+    const status = kind === "invalid-key" ? 401 : kind === "quota" ? 429 : kind === "blocked" ? 400 : 500;
+    return NextResponse.json({ error: friendlyApiError(error) }, { status });
   }
 }

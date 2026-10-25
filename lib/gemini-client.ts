@@ -8,6 +8,7 @@ import {
   SAFE_FALLBACK,
   GEMINI_KEY_PATTERN,
 } from "./safety";
+import { friendlyApiError } from "./api-error";
 import {
   MAX_HISTORY_MESSAGES,
   MAX_IMAGE_BYTES,
@@ -174,8 +175,7 @@ export async function askTutorDirect(params: {
     return text;
   } catch (error) {
     if (error instanceof TutorError) throw error;
-    throw new TutorError(
-      "Tive um probleminha para responder. Confere a tua internet e a chave API, e tenta de novo? \ud83d\de4f"
-    );
+    // Traduz o erro real (chave invalida, quota, rede, bloqueio) numa mensagem clara.
+    throw new TutorError(friendlyApiError(error));
   }
 }

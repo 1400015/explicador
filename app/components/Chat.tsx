@@ -641,6 +641,13 @@ export default function Chat() {
             placeholder="Escreve sua dúvida aqui..."
             maxLength={1000}
             disabled={loading}
+            // Teclado com correção automática e sugestões de palavras (pt-BR)
+            autoComplete="on"
+            autoCorrect="on"
+            autoCapitalize="sentences"
+            spellCheck={true}
+            lang="pt-BR"
+            inputMode="text"
             className="flex-1 rounded-full border border-indigo-200 bg-white px-4 py-2 text-[15px] text-gray-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-60"
           />
           <button

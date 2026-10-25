@@ -220,6 +220,26 @@ async function main() {
     return f !== null && !f.includes("14");
   })());
 
+  console.log("== api-error.ts (mensagens de erro especificas) ==");
+  const { classifyApiError, friendlyApiError } = await import("../lib/api-error");
+  const sdkErr = (status: number, body: object) => {
+    const e = new Error(JSON.stringify(body)) as Error & { status?: number };
+    e.status = status;
+    return e;
+  };
+  ok("401 -> chave invalida", classifyApiError(sdkErr(401, { error: { code: 401, status: "UNAUTHENTICATED", message: "bad key" } })) === "invalid-key");
+  ok("400 INVALID_ARGUMENT -> chave invalida", classifyApiError(sdkErr(400, { error: { code: 400, status: "INVALID_ARGUMENT", message: "API key not valid" } })) === "invalid-key");
+  ok("403 PERMISSION_DENIED -> chave invalida", classifyApiError(sdkErr(403, { error: { code: 403, status: "PERMISSION_DENIED", message: "no access" } })) === "invalid-key");
+  ok("429 RESOURCE_EXHAUSTED -> quota", classifyApiError(sdkErr(429, { error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "quota exceeded" } })) === "quota");
+  ok("404 NOT_FOUND -> modelo", classifyApiError(sdkErr(404, { error: { code: 404, status: "NOT_FOUND", message: "model not found" } })) === "model");
+  ok("503 UNAVAILABLE -> sobrecarregado", classifyApiError(sdkErr(503, { error: { code: 503, status: "UNAVAILABLE", message: "overloaded" } })) === "overloaded");
+  ok("SAFETY no body -> bloqueado", classifyApiError(sdkErr(400, { error: { code: 400, status: "INVALID_ARGUMENT", message: "Blocked due to SAFETY" } })) === "blocked");
+  ok("TypeError de rede -> network", classifyApiError(new TypeError("Failed to fetch")) === "network");
+  ok("erro desconhecido -> unknown", classifyApiError(new Error("qualquer coisa")) === "unknown");
+  ok("msg chave invalida menciona Definicoes", friendlyApiError(sdkErr(401, { error: { code: 401 } })).includes("Defini"));
+  ok("msg quota menciona esperar", friendlyApiError(sdkErr(429, { error: { code: 429 } })).includes("minuto"));
+  ok("msg rede menciona internet", friendlyApiError(new TypeError("Failed to fetch")).includes("internet"));
+
   console.log(`\n✅ Todos os ${passed} testes passaram.`);
 }
 
