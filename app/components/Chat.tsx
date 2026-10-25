@@ -7,7 +7,7 @@ import { processImageFiles } from "@/lib/images";
 import { takePhoto } from "@/lib/camera";
 import { isSpeechRecognitionAvailable, listenOnce, speak, stopSpeaking } from "@/lib/voice";
 import { isNativeApp, loadSettings, type AppSettings } from "@/lib/settings";
-import { upsertConversation, type StoredMessage } from "@/lib/conversations";
+import { upsertConversation, deleteConversation, type StoredMessage } from "@/lib/conversations";
 import { needsSupportBanner } from "@/lib/support";
 import { recordQuestion } from "@/lib/stats";
 import { calcFeedback, checkCalculation } from "@/lib/calc-check";
@@ -115,7 +115,8 @@ export default function Chat() {
     pin: null,
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [conversationId, setConversationId] = useState<string>(newConversationId);
+  // ID da conversa: gerado após a hidratação (Date.now no render quebra o prerender).
+  const [conversationId, setConversationId] = useState<string>("");
   const [listening, setListening] = useState(false);
   const [supportDismissed, setSupportDismissed] = useState(false);
   const [offlineTipsOpen, setOfflineTipsOpen] = useState(false);
@@ -152,9 +153,12 @@ export default function Chat() {
       subject: loadState().subject,
       messages: next.map(({ role, text }) => ({ role, text })),
     });
+    // Garante um ID antes de guardar (o ID só existe após a hidratação).
+    const id = conversationId || newConversationId();
+    if (!conversationId) setConversationId(id);
     if (next.length > 0) {
       void upsertConversation({
-        id: conversationId,
+        id,
         subject,
         updatedAt: Date.now(),
         messages: next.map(({ role, text }) => ({ role, text })) as StoredMessage[],
@@ -404,6 +408,10 @@ export default function Chat() {
     setPendingImages([]);
     setMessages([]);
     setSupportDismissed(false);
+    // Apaga a conversa guardada também — "limpar" tem de limpar de verdade.
+    if (conversationId) {
+      void deleteConversation(conversationId);
+    }
     setConversationId(newConversationId());
     saveState({ messages: [], subject });
     setError(null);
