@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAi, buildSystemPrompt, MODEL, THINKING_LEVEL } from "@/lib/gemini";
+import { getAi, buildSystemPrompt, serverModelConfig } from "@/lib/gemini";
 import { outputIsInappropriate, SAFE_FALLBACK } from "@/lib/safety";
 import { classifyApiError, friendlyApiError } from "@/lib/api-error";
 import { ChatRequestError, readChatRequest } from "@/lib/chat-request";
@@ -97,14 +97,25 @@ export async function POST(request: NextRequest) {
     history: chatHistory,
     apiKey,
   } = input;
+  if (apiKey && process.env.GEMINI_ALLOW_LEGACY_KEYS !== "1") {
+    return NextResponse.json(
+      {
+        error:
+          "Atualiza a aplicação: no modo Esta app a chave é usada diretamente na Google. O servidor usa a sua própria chave.",
+      },
+      { status: 400 },
+    );
+  }
   let client: GoogleGenAI;
+  let modelConfig: ReturnType<typeof serverModelConfig>;
   try {
+    modelConfig = serverModelConfig();
     client = apiKey ? getClientForKey(apiKey) : getAi();
   } catch {
     return NextResponse.json(
       {
         error:
-          "O servidor não tem chave configurada. Confere as Definições. ⚙️",
+          "Não foi possível iniciar a IA do servidor. Confere a chave, o modelo e o raciocínio configurados. ⚙️",
       },
       { status: 503 },
     );
@@ -125,14 +136,14 @@ export async function POST(request: NextRequest) {
 
   try {
     const response = await client.models.generateContent({
-      model: MODEL,
+      model: modelConfig.model,
       contents,
       config: {
         abortSignal: request.signal,
         systemInstruction: buildSystemPrompt(validSubject),
         maxOutputTokens: MAX_OUTPUT_TOKENS,
         thinkingConfig: {
-          thinkingLevel: THINKING_LEVEL as never,
+          thinkingLevel: modelConfig.thinking as never,
           includeThoughts: false,
         },
         safetySettings: [
@@ -178,7 +189,7 @@ export async function POST(request: NextRequest) {
     // 3.ª camada: verificação de moderação pela própria IA
     const isSafe = await moderate(text, async (prompt, abortSignal) => {
       const result = await client.models.generateContent({
-        model: MODEL,
+        model: modelConfig.model,
         contents: prompt,
         config: {
           abortSignal,

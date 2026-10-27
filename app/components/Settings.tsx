@@ -3,19 +3,21 @@
 import { useState } from "react";
 import {
   clearApiKey,
+  loadSettings,
   isNativeApp,
   saveSettings,
   setPin,
   type AppSettings,
   type TutorMode,
 } from "@/lib/settings";
-import { askTutorDirect } from "@/lib/gemini-client";
+import { askTutor } from "@/lib/tutor-transport";
+import { serverEndpoint } from "@/lib/transport-core";
+import { verifyParentPin } from "@/lib/parent-pin";
 import UsageStats from "./UsageStats";
 import Modal from "./Modal";
 import {
   createPinHash,
   isValidPinFormat,
-  verifyPin,
   PIN_MAX_LENGTH,
   PIN_MIN_LENGTH,
 } from "@/lib/pin";
@@ -39,6 +41,12 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
   const [mode, setMode] = useState<TutorMode>(settings.mode);
   const [apiKey, setApiKey] = useState(settings.apiKey);
   const [serverUrl, setServerUrl] = useState(settings.serverUrl);
+  const [allowLocalHttp, setAllowLocalHttp] = useState(
+    settings.allowLocalHttp === true,
+  );
+  const [persistApiKey, setPersistApiKey] = useState(
+    settings.persistApiKey === true,
+  );
   const [showKey, setShowKey] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
@@ -57,18 +65,24 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
 
   async function handleUnlock(e: React.FormEvent) {
     e.preventDefault();
-    if (!settings.pin) return;
-    if (await verifyPin(lockPin, settings.pin)) {
-      setUnlocked(settings);
+    try {
+      if (!(await verifyParentPin(lockPin))) {
+        setLockError("PIN incorreto. Tenta de novo.");
+        return;
+      }
+      setUnlocked(await loadSettings());
       setView("settings");
       setLockError(null);
-      setLockPin("");
-    } else {
-      setLockError("PIN incorreto. Tenta de novo.");
+    } catch (error) {
+      setLockError(
+        error instanceof Error
+          ? error.message
+          : "Não consegui verificar o PIN.",
+      );
+    } finally {
       setLockPin("");
     }
   }
-
   async function requestAction(action: "save" | "clear") {
     if (!hasPin) {
       if (action === "save") await doSave();
@@ -79,163 +93,129 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
     setConfirmPin("");
     setConfirmError(null);
   }
-
   async function handleConfirmPin(e: React.FormEvent) {
     e.preventDefault();
-    if (!settings.pin) return;
-    if (await verifyPin(confirmPin, settings.pin)) {
-      setPendingAction(null);
-      setConfirmPin("");
-      if (pendingAction === "save") await doSave();
-      else await doClear();
-    } else {
-      setConfirmError("PIN incorreto.");
-      setConfirmPin("");
-    }
-  }
-
-  async function doSave() {
-    const next: AppSettings = {
-      mode: apiKey.trim() ? mode : "server",
-      apiKey: apiKey.trim(),
-      serverUrl: serverUrl.trim(),
-      pin: unlocked.pin,
-    };
-    await saveSettings(next);
-    setUnlocked(next);
-    setStatus("Definições guardadas! ✅");
-    onSaved(next);
-  }
-
-  async function doClear() {
-    await clearApiKey();
-    setApiKey("");
-    setMode("server");
-    const next: AppSettings = {
-      mode: "server",
-      apiKey: "",
-      serverUrl,
-      pin: unlocked.pin,
-    };
-    setUnlocked(next);
-    setStatus("Chave apagada do telemóvel. 🗑️");
-    onSaved(next);
-  }
-
-  async function handleTest() {
-    const native = isNativeApp();
-    if (mode === "direct") {
-      const key = apiKey.trim();
-      if (!key) {
-        setStatus("Escreve a chave primeiro.");
+    try {
+      if (!(await verifyParentPin(confirmPin))) {
+        setConfirmError("PIN incorreto.");
         return;
       }
-      setTesting(true);
-      setStatus(null);
-      try {
-        const reply = await askTutorDirect({
-          apiKey: key,
-          message:
-            "Teste de ligação: responde só 'OK' se me estiveres a ouvir.",
-          history: [],
-          subject: "geral",
-          images: [],
-        });
-        setStatus(`Ligação OK! ${reply.slice(0, 80)} ✅`);
-      } catch (err) {
-        setStatus(
-          err instanceof Error
-            ? `Falhou: ${err.message}`
-            : "Falhou: erro desconhecido",
-        );
-      } finally {
-        setTesting(false);
-      }
-      return;
-    }
-
-    if (native && !serverUrl.trim()) {
-      setStatus(
-        "No modo Servidor na app Android, indica o endereço do teu servidor (ex.: https://teu-site.com).",
+      setPendingAction(null);
+      if (pendingAction === "save") await doSave();
+      else await doClear();
+    } catch (error) {
+      setConfirmError(
+        error instanceof Error
+          ? error.message
+          : "Não consegui verificar o PIN.",
       );
-      return;
+    } finally {
+      setConfirmPin("");
     }
-    const base = native ? serverUrl.trim().replace(/\/+$/, "") : "";
+  }
+  async function doSave() {
+    try {
+      if (mode === "direct" && !apiKey.trim())
+        throw new Error("Indica a chave API para usar o modo Esta app.");
+      if (mode === "server" && isNativeApp())
+        serverEndpoint(serverUrl, allowLocalHttp);
+      const current = await loadSettings();
+      const next = await saveSettings({
+        ...current,
+        mode,
+        apiKey: apiKey.trim(),
+        serverUrl: isNativeApp() ? serverUrl.trim() : "",
+        allowLocalHttp,
+        persistApiKey,
+      });
+      setUnlocked(next);
+      onSaved(next);
+    } catch (error) {
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : "Não consegui guardar as definições. Tenta novamente.",
+      );
+    }
+  }
+  async function doClear() {
+    try {
+      const next = await clearApiKey();
+      setApiKey("");
+      setMode("server");
+      setUnlocked(next);
+      onSaved(next);
+    } catch (error) {
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : "Não consegui apagar a chave. Tenta novamente.",
+      );
+    }
+  }
+  async function handleTest() {
     setTesting(true);
     setStatus(null);
     try {
-      const res = await fetch(`${base}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message:
-            "Teste de ligação: responde só 'OK' se me estiveres a ouvir.",
+      const reply = await askTutor(
+        { mode, apiKey, serverUrl, allowLocalHttp },
+        {
+          message: "Teste de ligação: responde só OK se me estiveres a ouvir.",
           history: [],
           subject: "geral",
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.reply) {
-        setStatus("Ligação OK! O servidor respondeu. ✅");
-      } else {
-        setStatus(`Falhou: ${data.error ?? "erro desconhecido"}`);
-      }
-    } catch {
+          images: [],
+        },
+      );
+      setStatus("Ligação OK! " + reply.slice(0, 80));
+    } catch (error) {
       setStatus(
-        "Falhou: sem ligação ao servidor. Verifica o endereço e a internet.",
+        error instanceof Error
+          ? error.message
+          : "Não consegui testar a ligação.",
       );
     } finally {
       setTesting(false);
     }
   }
-
   async function handleSetPin(e: React.FormEvent) {
     e.preventDefault();
     setPinStatus(null);
-    if (hasPin && !(await verifyPin(currentPin, settings.pin!))) {
-      setPinStatus("PIN atual incorreto.");
-      return;
-    }
-    if (!isValidPinFormat(newPin)) {
+    try {
+      if (hasPin && !(await verifyParentPin(currentPin)))
+        throw new Error("PIN atual incorreto.");
+      if (!isValidPinFormat(newPin))
+        throw new Error("O PIN tem de ter 4 a 6 dígitos.");
+      if (newPin !== newPinConfirm)
+        throw new Error("Os dois PINs não coincidem.");
+      const next = await setPin(await createPinHash(newPin));
+      setUnlocked(next);
+      onSaved(next);
+    } catch (error) {
       setPinStatus(
-        `O PIN tem de ter ${PIN_MIN_LENGTH} a ${PIN_MAX_LENGTH} dígitos.`,
+        error instanceof Error ? error.message : "Não consegui guardar o PIN.",
       );
-      return;
+    } finally {
+      setNewPin("");
+      setNewPinConfirm("");
+      setCurrentPin("");
     }
-    if (newPin !== newPinConfirm) {
-      setPinStatus("Os dois PINs não coincidem.");
-      return;
-    }
-    const pinHash = await createPinHash(newPin);
-    const next: AppSettings = { ...unlocked, pin: pinHash };
-    await setPin(pinHash);
-    await saveSettings(next);
-    setUnlocked(next);
-    onSaved(next);
-    setPinStatus(
-      hasPin
-        ? "PIN alterado! ✅"
-        : "PIN criado! A secção de definições ficou protegida. ✅",
-    );
-    setNewPin("");
-    setNewPinConfirm("");
-    setCurrentPin("");
   }
-
   async function handleRemovePin(e: React.FormEvent) {
     e.preventDefault();
     setPinStatus(null);
-    if (!settings.pin || !(await verifyPin(currentPin, settings.pin))) {
-      setPinStatus("PIN incorreto.");
-      return;
+    try {
+      if (!(await verifyParentPin(currentPin)))
+        throw new Error("PIN incorreto.");
+      const next = await setPin(null);
+      setUnlocked(next);
+      onSaved(next);
+    } catch (error) {
+      setPinStatus(
+        error instanceof Error ? error.message : "Não consegui remover o PIN.",
+      );
+    } finally {
+      setCurrentPin("");
     }
-    const next: AppSettings = { ...unlocked, pin: null };
-    await setPin(null);
-    await saveSettings(next);
-    setUnlocked(next);
-    onSaved(next);
-    setPinStatus("PIN removido. A secção de definições ficou desprotegida.");
-    setCurrentPin("");
   }
 
   if (view === "lock") {
@@ -382,17 +362,29 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
             </button>
           </div>
           <p className="mb-4 text-xs text-gray-400">
-            A chave fica guardada neste telemóvel (protegida por PIN) e só é
-            usada para falar com a API do Google. Obtém uma em
-            aistudio.google.com/apikey
+            {isNativeApp()
+              ? "No Android, a chave fica cifrada e protegida pelo Android Keystore. O PIN limita o acesso às definições."
+              : "No navegador, a chave é usada diretamente na Google. Guardar só nesta sessão reduz a persistência; o PIN não cifra o armazenamento do browser."}{" "}
+            Obtém uma chave em aistudio.google.com/apikey.
           </p>
+          {!isNativeApp() && (
+            <label className="mb-4 flex items-start gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={persistApiKey}
+                onChange={(event) => setPersistApiKey(event.target.checked)}
+              />
+              Guardar a chave neste navegador entre sessões (armazenamento local
+              sem encriptação)
+            </label>
+          )}
           <div className="mb-4 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">
             ⚠️ Se o telemóvel for perdido ou roubado, a chave pode ser usada por
             outra pessoa. Se isso acontecer, apaga a chave no
             aistudio.google.com e cria outra.
           </div>
         </>
-      ) : (
+      ) : isNativeApp() ? (
         <>
           <label className="mb-1 block text-sm font-medium text-gray-700">
             Endereço do servidor (opcional na app Android)
@@ -414,9 +406,35 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
               ? "Na app Android, indica o endereço do computador/servidor onde corre o Tutor IA (ex.: http://192.168.1.42:3000). A chave API fica nesse servidor — mais seguro."
               : "No navegador, a app usa automaticamente o servidor onde está publicada. Só muda se quiseres ligar a outro servidor."}
           </p>
+          <label className="mb-4 flex items-start gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={allowLocalHttp}
+              onChange={(event) => setAllowLocalHttp(event.target.checked)}
+            />
+            Permitir HTTP apenas num servidor da rede local (as perguntas e
+            fotos seguem sem encriptação)
+          </label>
         </>
+      ) : (
+        <p className="mb-4 text-sm text-gray-600">
+          O navegador usa o servidor onde esta aplicação está publicada. A chave
+          pertence ao servidor.
+        </p>
       )}
 
+      {unlocked.apiKeyIssue && (
+        <p role="alert" className="mb-4 rounded-xl bg-amber-50 p-3 text-sm">
+          {unlocked.apiKeyIssue}
+        </p>
+      )}
+      {isNativeApp() && (
+        <p className="mb-4 text-xs text-gray-500">
+          As definições, chaves e conversas locais não participam de backups nem
+          de transferência automática. Numa reinstalação, configura novamente a
+          chave.
+        </p>
+      )}
       {status && (
         <div className="mb-4 rounded-xl bg-indigo-50 px-3 py-2 text-sm text-indigo-800">
           {status}
@@ -496,7 +514,7 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
               ? "Testar chave"
               : "Testar servidor"}
         </button>
-        {mode === "direct" && (
+        {(mode === "direct" || unlocked.apiKeyIssue) && (
           <button
             onClick={() => requestAction("clear")}
             className="rounded-xl bg-red-100 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-200"

@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import ServiceWorkerRegister from "./components/ServiceWorkerRegister";
 
 export const metadata: Metadata = {
   title: "Tutor IA — Estudos com IA",
@@ -17,7 +16,9 @@ export const metadata: Metadata = {
       { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
       { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
   },
 };
 
@@ -35,10 +36,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR">
-      <body className="antialiased">
-        {children}
-        <ServiceWorkerRegister />
-      </body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }

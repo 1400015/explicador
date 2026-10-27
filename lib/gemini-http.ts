@@ -96,7 +96,7 @@ type GeminiResponse = {
 async function callGeminiRaw(
   apiKey: string,
   body: Record<string, unknown>,
-  timeout = 120_000,
+  timeout = 55_000,
 ): Promise<GeminiResponse> {
   const res: HttpResponse = await CapacitorHttp.request({
     url: ENDPOINT,
@@ -109,6 +109,7 @@ async function callGeminiRaw(
     connectTimeout: Math.min(20_000, timeout),
     readTimeout: timeout,
     responseType: "json",
+    disableRedirects: true,
   });
 
   // Erro HTTP real (401 chave, 429 quota, 503, etc.) — devolve o body para classificação

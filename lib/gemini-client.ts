@@ -19,7 +19,7 @@ import {
   SAFE_FALLBACK,
   GEMINI_KEY_PATTERN,
 } from "./safety";
-import { friendlyApiError } from "./api-error";
+import { friendlyApiError, classifyApiError } from "./api-error";
 import {
   generateWithNativeHttp,
   moderationCheckNativeHttp,
@@ -43,6 +43,9 @@ import { prepareHistory } from "./history";
 import { moderate, MODERATION_UNAVAILABLE } from "./moderation";
 
 const clients = new Map<string, GoogleGenAI>();
+export function clearDirectClients() {
+  clients.clear();
+}
 
 function getClient(apiKey: string): GoogleGenAI {
   let client = clients.get(apiKey);
@@ -150,10 +153,8 @@ export async function askTutorDirect(params: {
     );
   }
 
-  // Na app Android, tenta primeiro o HTTP nativo (OkHttp) — dá o erro HTTP real
-  // e não sofre com restrições do WebView. Se falhar por rede, faz fallback para o SDK.
+  // Android usa HTTP nativo; uma falha não altera o transporte escolhido.
   let text: string | null = null;
-  let lastError: unknown = null;
 
   if (isNativeHttpAvailable()) {
     try {
@@ -172,64 +173,53 @@ export async function askTutorDirect(params: {
       // Normalizamos para { status, message: <json> } para o classificador funcionar.
       if (err instanceof TutorError) throw err;
       const normalized = normalizeNativeError(err);
-      lastError = normalized;
-      // Se for erro de rede (sem status HTTP), tenta o SDK como fallback.
-      // Se for erro real da API (400/401/429/...), traduz já para mensagem amigável —
-      // este throw está FORA do try exterior, por isso o JSON cru não pode escapar.
-      if (normalized.status !== undefined) {
-        throw new TutorError(friendlyApiError(normalized)); // erro real da API — não vale a pena repetir
-      }
-      // else: cai para o SDK abaixo
+      throw new TutorError(
+        friendlyApiError(normalized),
+        classifyApiError(normalized),
+      );
     }
   }
 
   try {
     if (text === null) {
-      // Fallback: SDK (fetch do WebView) — só quando o HTTP nativo não está disponível
-      // ou falhou por rede (sem status HTTP real).
+      // O browser usa o SDK da Google.
       const client = getClient(apiKey);
-      let sdkText: string | null = null;
-      try {
-        const response = await client.models.generateContent({
-          model: MODEL,
-          contents: buildContents(history, message, images),
-          config: {
-            abortSignal: params.signal,
-            systemInstruction: buildSystemPrompt(subject),
-            maxOutputTokens: MAX_OUTPUT_TOKENS,
-            thinkingConfig: {
-              thinkingLevel: THINKING_LEVEL as never,
-              includeThoughts: false,
-            },
-            safetySettings: [
-              {
-                category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-              },
-              {
-                category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-              },
-              {
-                category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
-              },
-              {
-                category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-              },
-              {
-                category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
-                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-              },
-            ],
+      const response = await client.models.generateContent({
+        model: MODEL,
+        contents: buildContents(history, message, images),
+        config: {
+          abortSignal: params.signal,
+          systemInstruction: buildSystemPrompt(subject),
+          maxOutputTokens: MAX_OUTPUT_TOKENS,
+          thinkingConfig: {
+            thinkingLevel: THINKING_LEVEL as never,
+            includeThoughts: false,
           },
-        });
-        sdkText = response.text ?? null;
-      } catch (sdkError) {
-        // Se o HTTP nativo já deu um erro real, esse é o que interessa
-        throw lastError ?? sdkError;
-      }
+          safetySettings: [
+            {
+              category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+              threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+              threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+              threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+              threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+              threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            },
+          ],
+        },
+      });
+      const sdkText = response.text ?? null;
       if (!sdkText) {
         return "Não consegui ver direito essa foto. Tenta tirar outra com mais luz e mais de perto? 📸";
       }
@@ -253,6 +243,6 @@ export async function askTutorDirect(params: {
   } catch (error) {
     if (error instanceof TutorError) throw error;
     // Traduz o erro real (chave invalida, quota, rede, bloqueio) numa mensagem clara.
-    throw new TutorError(friendlyApiError(error));
+    throw new TutorError(friendlyApiError(error), classifyApiError(error));
   }
 }

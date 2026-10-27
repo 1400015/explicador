@@ -1,11 +1,11 @@
 {
   "name": "tutor-ia",
-  "version": "1.1.5",
+  "version": "1.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "build:static": "TUTOR_IA_STATIC=1 next build",
+    "build": "node scripts/build.mjs",
+    "build:static": "node scripts/build.mjs --static",
     "start": "next start",
     "lint": "eslint",
     "test": "tsx scripts/test-client-logic.ts && tsx --test scripts/*.test.ts",
@@ -19,7 +19,6 @@
     "@capacitor-community/speech-recognition": "^7.0.1",
     "@capacitor/android": "^8.5.3",
     "@capacitor/camera": "^8.2.6",
-    "@capacitor/cli": "^8.5.3",
     "@capacitor/core": "^8.5.3",
     "@capacitor/preferences": "^8.0.1",
     "@google/genai": "^2.31.0",
@@ -37,6 +36,12 @@
     "eslint-config-next": "16.4.3",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
-    "typescript": "^5"
+    "typescript": "^5",
+    "@capacitor/cli": "^8.5.3"
+  },
+  "overrides": {
+    "xcode": {
+      "uuid": "^11.1.1"
+    }
   }
 }

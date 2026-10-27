@@ -396,3 +396,201 @@ test("envio aguarda processamento da fotografia sem perder o anexo", async ({
     page.getByRole("button", { name: "Enviar", exact: true }),
   ).toBeEnabled();
 });
+
+test("modo Esta app usa Google no teste e no chat sem enviar a chave ao backend", async ({
+  page,
+}) => {
+  const key = "AIza" + "A".repeat(35);
+  let backend = 0,
+    google = 0;
+  await page.route("**/api/chat", (route) => {
+    backend++;
+    return route.fulfill({ status: 500, json: { error: "Wrong route" } });
+  });
+  await page.route(
+    "https://generativelanguage.googleapis.com/**",
+    async (route) => {
+      if (route.request().method() === "OPTIONS")
+        return route.fulfill({
+          status: 204,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Methods": "POST,OPTIONS",
+          },
+        });
+      google++;
+      const json = route.request().postDataJSON();
+      const text = JSON.stringify(json.contents);
+      await route.fulfill({
+        headers: { "Access-Control-Allow-Origin": "*" },
+        json: {
+          candidates: [
+            {
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: text.includes("Avalia se o texto")
+                      ? "SIM"
+                      : "Resposta direta da Google",
+                  },
+                ],
+              },
+              finishReason: "STOP",
+            },
+          ],
+        },
+      });
+    },
+  );
+  await page.goto("/");
+  await page.getByRole("button", { name: "Definições (pais)" }).click();
+  await page.getByRole("button", { name: /Esta app/ }).click();
+  await page.getByLabel("Chave API do Google Gemini").fill(key);
+  await page.getByRole("button", { name: "Testar chave", exact: true }).click();
+  await expect(page.getByText("Ligação OK!", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Guardar", exact: true }).click();
+  await send(page, "Como estudo frações?");
+  await expect(
+    page.getByText("Resposta direta da Google", { exact: false }),
+  ).toBeVisible();
+  expect(google).toBe(4);
+  expect(backend).toBe(0);
+  expect(
+    await page.evaluate(() => localStorage.getItem("tutor-ia-settings-v1")),
+  ).not.toContain(key);
+  expect(
+    await page.evaluate(() => localStorage.getItem("tutor-ia-api-key-v2")),
+  ).toBeNull();
+  expect(
+    await page.evaluate(() => sessionStorage.getItem("tutor-ia-api-key-v2")),
+  ).toBe(key);
+});
+test("atraso de PIN persiste após fechar e reabrir definições", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Date.now = () => 1000;
+  });
+  const hash = createHash("sha256").update("test-salt:4321").digest("hex");
+  await page.addInitScript(
+    (value) =>
+      localStorage.setItem(
+        "tutor-ia-settings-v1",
+        JSON.stringify({
+          mode: "server",
+          apiKey: "",
+          serverUrl: "",
+          pin: { salt: "test-salt", hash: value },
+        }),
+      ),
+    hash,
+  );
+  await page.goto("/");
+  await page.getByRole("button", { name: "Definições (pais)" }).click();
+  const dialog = page.getByRole("dialog", { name: "Definições bloqueadas" });
+  for (let i = 0; i < 3; i++) {
+    await dialog.getByLabel("PIN", { exact: true }).fill("1111");
+    await dialog.getByRole("button", { name: "Desbloquear" }).click();
+    await expect(
+      dialog.getByText("PIN incorreto.", { exact: false }),
+    ).toBeVisible();
+    await expect(dialog.getByLabel("PIN", { exact: true })).toHaveValue("");
+  }
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Definições (pais)" }).click();
+  await dialog.getByLabel("PIN", { exact: true }).fill("4321");
+  await dialog.getByRole("button", { name: "Desbloquear" }).click();
+  await expect(dialog.getByText("Aguarda", { exact: false })).toBeVisible();
+});
+
+test("criar PIN noutra janela fecha definições abertas e exige o PIN novo", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/");
+  const other = await context.newPage();
+  await other.goto("/");
+  await other.getByRole("button", { name: "Definições (pais)" }).click();
+  await expect(
+    other.getByRole("dialog", { name: "Definições dos pais" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Definições (pais)" }).click();
+  await page.getByRole("button", { name: "🔐 Criar PIN de proteção" }).click();
+  await page.getByLabel("Novo PIN", { exact: true }).fill("4321");
+  await page.getByLabel("Repetir novo PIN", { exact: true }).fill("4321");
+  await page.getByRole("button", { name: "Criar PIN", exact: true }).click();
+  await expect(other.getByRole("dialog")).toHaveCount(0);
+  await other.getByRole("button", { name: "Definições (pais)" }).click();
+  const locked = other.getByRole("dialog", { name: "Definições bloqueadas" });
+  await expect(locked).toBeVisible();
+  await locked.getByLabel("PIN", { exact: true }).fill("4321");
+  await locked.getByRole("button", { name: "Desbloquear" }).click();
+  await expect(
+    other.getByRole("dialog", { name: "Definições dos pais" }),
+  ).toBeVisible();
+});
+
+test("apagar chave interrompe a resposta pendente e conserva a pergunta para repetir", async ({
+  page,
+}) => {
+  const key = "AIza" + "A".repeat(35),
+    waiting = gate();
+  let requested = false;
+  await page.route(
+    "https://generativelanguage.googleapis.com/**",
+    async (route) => {
+      if (route.request().method() === "OPTIONS")
+        return route.fulfill({
+          status: 204,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Methods": "POST,OPTIONS",
+          },
+        });
+      requested = true;
+      await waiting.promise;
+      await route
+        .fulfill({
+          headers: { "Access-Control-Allow-Origin": "*" },
+          json: {
+            candidates: [
+              {
+                content: {
+                  role: "model",
+                  parts: [{ text: "RESPOSTA_COM_CHAVE_APAGADA" }],
+                },
+                finishReason: "STOP",
+              },
+            ],
+          },
+        })
+        .catch(() => {});
+    },
+  );
+  await page.goto("/");
+  await page.getByRole("button", { name: "Definições (pais)" }).click();
+  await page.getByRole("button", { name: /Esta app/ }).click();
+  await page.getByLabel("Chave API do Google Gemini").fill(key);
+  await page.getByRole("button", { name: "Guardar", exact: true }).click();
+  await send(page, "Pergunta a conservar depois de apagar a chave");
+  await expect.poll(() => requested).toBe(true);
+  await page.getByRole("button", { name: "Definições (pais)" }).click();
+  await page.getByRole("button", { name: "Apagar chave", exact: true }).click();
+  await expect(input(page)).toHaveValue(
+    "Pergunta a conservar depois de apagar a chave",
+  );
+  await expect(input(page)).toBeEnabled();
+  waiting.resolve();
+  await expect(
+    page.getByText("RESPOSTA_COM_CHAVE_APAGADA", { exact: false }),
+  ).toHaveCount(0);
+  expect(
+    await page.evaluate(() => sessionStorage.getItem("tutor-ia-api-key-v2")),
+  ).toBeNull();
+  expect(
+    await page.evaluate(() => localStorage.getItem("tutor-ia-api-key-v2")),
+  ).toBeNull();
+});

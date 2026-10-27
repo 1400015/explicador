@@ -1,0 +1,65 @@
+name: Prepare signed Android release
+on:
+  workflow_dispatch:
+    inputs:
+      tested_on_device:
+        description: "A geração/moderação reais e a atualização com a assinatura original foram validadas num Android"
+        required: true
+        type: boolean
+        default: false
+permissions:
+  contents: write
+jobs:
+  release:
+    timeout-minutes: 30
+    if: ${{ inputs.tested_on_device }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - run: npm ci
+      - run: npm test
+      - run: npm run android:sync
+      - name: Assemble and verify signed APK
+        env:
+          TUTOR_ANDROID_KEYSTORE_BASE64: ${{ secrets.TUTOR_ANDROID_KEYSTORE_BASE64 }}
+          TUTOR_ANDROID_STORE_PASSWORD: ${{ secrets.TUTOR_ANDROID_STORE_PASSWORD }}
+          TUTOR_ANDROID_KEY_ALIAS: ${{ secrets.TUTOR_ANDROID_KEY_ALIAS }}
+          TUTOR_ANDROID_KEY_PASSWORD: ${{ secrets.TUTOR_ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in TUTOR_ANDROID_KEYSTORE_BASE64 TUTOR_ANDROID_STORE_PASSWORD TUTOR_ANDROID_KEY_ALIAS TUTOR_ANDROID_KEY_PASSWORD; do
+            test -n "${!name}" || { echo "Segredo em falta: $name"; exit 1; }
+          done
+          export TUTOR_ANDROID_KEYSTORE="$RUNNER_TEMP/tutor-release.jks"
+          trap 'rm -f "$TUTOR_ANDROID_KEYSTORE"' EXIT
+          printf '%s' "$TUTOR_ANDROID_KEYSTORE_BASE64" | base64 --decode > "$TUTOR_ANDROID_KEYSTORE"
+          chmod 600 "$TUTOR_ANDROID_KEYSTORE"
+          (cd android && ./gradlew --no-daemon :app:assembleRelease)
+          node scripts/check-apk.mjs android/app/build/outputs/apk/release/app-release.apk
+          mkdir -p artifacts
+          cp android/app/build/outputs/apk/release/app-release.apk artifacts/tutor-ia-release.apk
+          (cd artifacts && sha256sum tutor-ia-release.apk > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-android-release
+          path: artifacts/
+      - name: Prepare draft release for review
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require("./package.json").version')"
+          gh release create "v$version" --draft --target "$GITHUB_SHA" \
+            --title "Tutor IA $version" --notes-file docs/RELEASE_NOTES_1.2.0.md \
+            artifacts/tutor-ia-release.apk artifacts/SHA256SUMS

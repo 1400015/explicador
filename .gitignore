@@ -58,3 +58,9 @@ out/
 # Playwright
 /test-results/
 /playwright-report/
+
+# Service worker gerado pelo build
+/public/sw.js
+/public/sw.js.tmp
+
+/artifacts/

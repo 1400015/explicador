@@ -10,9 +10,25 @@ export function getAi(): GoogleGenAI {
   if (!client) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error("GEMINI_API_KEY n\u00e3o est\u00e1 definida. Configure no arquivo .env.local");
+      throw new Error(
+        "GEMINI_API_KEY n\u00e3o est\u00e1 definida. Configure no arquivo .env.local",
+      );
     }
     client = new GoogleGenAI({ apiKey });
   }
   return client;
+}
+
+import {
+  MODEL as PUBLIC_MODEL,
+  THINKING_LEVEL as PUBLIC_THINKING,
+} from "./prompt";
+import { modelName, thinkingLevel } from "./model-config";
+export function serverModelConfig() {
+  return {
+    model: modelName(process.env.GEMINI_MODEL || PUBLIC_MODEL),
+    thinking: thinkingLevel(
+      process.env.GEMINI_THINKING_LEVEL || PUBLIC_THINKING,
+    ),
+  };
 }

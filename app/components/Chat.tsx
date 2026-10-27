@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { type Subject, SUBJECT_LABELS } from "@/lib/prompt";
-import { askTutorDirect, TutorError } from "@/lib/gemini-client";
+import { TutorError } from "@/lib/tutor-error";
+import { askTutor as requestTutor } from "@/lib/tutor-transport";
 import { processImageFiles } from "@/lib/images";
 import { takePhoto } from "@/lib/camera";
 import {
@@ -11,7 +12,12 @@ import {
   speak,
   stopSpeaking,
 } from "@/lib/voice";
-import { isNativeApp, loadSettings, type AppSettings } from "@/lib/settings";
+import {
+  loadSettings,
+  reloadSettings,
+  SETTINGS_KEY,
+  type AppSettings,
+} from "@/lib/settings";
 import {
   conversationStore,
   useConversations,
@@ -19,13 +25,15 @@ import {
 } from "@/lib/conversations";
 import { needsSupportBanner } from "@/lib/support";
 import { RequestGuard } from "@/lib/request-guard";
-import { prepareHistory } from "@/lib/history";
 import { recordQuestion } from "@/lib/stats";
 import { calcFeedback, checkCalculation } from "@/lib/calc-check";
 import ConversationList from "./ConversationList";
 import OfflineTips from "./OfflineTips";
 import SupportBanner from "./SupportBanner";
 import Settings from "./Settings";
+import ServiceWorkerRegister from "./ServiceWorkerRegister";
+import { useDraft, saveDraft, updateDraft } from "@/lib/draft";
+import { blockUpdate } from "@/lib/update-state";
 import {
   MAX_IMAGES_PER_MESSAGE,
   type ChatImage,
@@ -66,10 +74,11 @@ export default function Chat() {
   const displayMessages = pendingUser ? [...messages, pendingUser] : messages;
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const pendingRef = useRef(pendingImages);
-  useEffect(() => {
-    pendingRef.current = pendingImages;
-  }, [pendingImages]);
-  const [input, setInput] = useState("");
+  const draft = useDraft();
+  const input = draft.id === stored.activeId ? draft.text : "";
+  function setInput(value: string | ((previous: string) => string)) {
+    updateDraft(conversationStore.getSnapshot().activeId, value);
+  }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings>({
@@ -78,6 +87,7 @@ export default function Chat() {
     serverUrl: "",
     pin: null,
   });
+  const [settingsReady, setSettingsReady] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [listening, setListening] = useState(false);
@@ -100,9 +110,79 @@ export default function Chat() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const externalSettings = (event: StorageEvent) => {
+      if (
+        event.key === SETTINGS_KEY ||
+        event.key === "tutor-ia-api-key-v2" ||
+        event.key === null
+      ) {
+        setSettingsOpen(false);
+        setSettingsReady(false);
+        reloadSettings()
+          .then((value) => {
+            setSettings(value);
+            setSettingsReady(true);
+          })
+          .catch((error) =>
+            setError(
+              error instanceof Error
+                ? error.message
+                : "Não consegui atualizar as definições.",
+            ),
+          );
+      }
+    };
+    window.addEventListener("storage", externalSettings);
+    return () => window.removeEventListener("storage", externalSettings);
+  }, []);
 
   useEffect(() => {
-    loadSettings().then(setSettings);
+    if (
+      stored.ready &&
+      draft.id !== null &&
+      !stored.conversations.some((item) => item.id === draft.id)
+    )
+      saveDraft(stored.activeId, "");
+  }, [stored.ready, stored.activeId, stored.conversations, draft.id]);
+
+  useEffect(() => {
+    pendingRef.current = pendingImages;
+  }, [pendingImages]);
+  useEffect(() => {
+    blockUpdate(
+      !stored.ready ||
+        !!stored.error ||
+        loading ||
+        processing ||
+        listening ||
+        pendingImages.length > 0 ||
+        (!!input && !draft.persisted),
+    );
+  }, [
+    stored.ready,
+    stored.error,
+    loading,
+    processing,
+    listening,
+    pendingImages.length,
+    input,
+    draft.persisted,
+  ]);
+
+  useEffect(() => {
+    loadSettings()
+      .then((value) => {
+        setSettings(value);
+        setSettingsReady(true);
+      })
+      .catch((error) =>
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Não consegui carregar as Definições.",
+        ),
+      );
   }, []);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -256,49 +336,13 @@ export default function Chat() {
     history: ChatMessage[],
     signal: AbortSignal,
   ): Promise<string> {
-    const native = isNativeApp();
-    if (native && settings.mode === "direct") {
-      if (!settings.apiKey.trim())
-        throw new TutorError(
-          "Guarda a tua chave API nas Definições (⚙️) para a app funcionar.",
-        );
-      return askTutorDirect({
-        apiKey: settings.apiKey.trim(),
-        message: text,
-        history,
-        subject,
-        images,
-        signal,
-      });
-    }
-    if (native && settings.mode === "server" && !settings.serverUrl.trim())
-      throw new TutorError(
-        "Esta app não tem servidor ligado. Nas Definições (⚙️), escolhe “Esta app” ou indica um servidor próprio.",
-      );
-    const base = native ? settings.serverUrl.trim().replace(/\/+$/, "") : "";
-    const res = await fetch(base + "/api/chat", {
-      method: "POST",
+    return requestTutor(settings, {
+      message: text,
+      images,
+      history,
+      subject,
       signal,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: text,
-        images,
-        history: prepareHistory(history),
-        subject,
-        apiKey:
-          !native && settings.mode === "direct" ? settings.apiKey : undefined,
-      }),
     });
-    const data = await res.json();
-    if (!res.ok)
-      throw new TutorError(
-        typeof data.error === "string"
-          ? data.error
-          : "O servidor não conseguiu responder. Tenta novamente.",
-      );
-    if (typeof data.reply !== "string" || !data.reply.trim())
-      throw new TutorError("O tutor não enviou uma resposta. Tenta novamente.");
-    return data.reply;
   }
 
   async function sendMessage(e: React.FormEvent) {
@@ -355,7 +399,12 @@ export default function Chat() {
           ? err.message
           : "Não consegui falar com o tutor. Verifica a ligação e tenta de novo.",
       );
-      if (!(err instanceof TutorError)) setOfflineTipsOpen(true);
+      if (
+        !(err instanceof TutorError) ||
+        err.kind === "network" ||
+        !navigator.onLine
+      )
+        setOfflineTipsOpen(true);
     } finally {
       if (guard.current.isCurrent(request)) {
         setPendingUser(null);
@@ -431,6 +480,7 @@ export default function Chat() {
 
   return (
     <div className="flex h-[100dvh] min-w-0 flex-col bg-gradient-to-b from-sky-100 to-indigo-100">
+      <ServiceWorkerRegister />
       <header className="border-b border-indigo-100 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-2xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
@@ -444,6 +494,7 @@ export default function Chat() {
           </div>
           <button
             ref={settingsButtonRef}
+            disabled={!settingsReady}
             aria-label="Definições (pais)"
             onClick={() => setSettingsOpen(true)}
             title="Definições (pais)"
@@ -737,6 +788,13 @@ export default function Chat() {
           settings={settings}
           onClose={() => setSettingsOpen(false)}
           onSaved={(next) => {
+            if (loading) {
+              if (pendingUser) setInput(pendingUser.text);
+              requestConversation.current = null;
+              guard.current.cancel();
+              setPendingUser(null);
+              setLoading(false);
+            }
             setSettings(next);
             setSettingsOpen(false);
             setError(null);

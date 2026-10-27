@@ -79,3 +79,14 @@ test("o limite de pedidos continua ativo", async ({ request }) => {
     (await request.post("/api/chat", { headers, data: null })).status(),
   ).toBe(429);
 });
+
+test("servidor recusa chave local de cliente antigo quando compatibilidade não está ativa", async ({
+  request,
+}) => {
+  const response = await request.post("/api/chat", {
+    headers: { "x-forwarded-for": crypto.randomUUID() },
+    data: { message: "oi", history: [], apiKey: "AIza" + "A".repeat(35) },
+  });
+  expect(response.status()).toBe(400);
+  expect((await response.json()).error).toContain("Atualiza a aplicação");
+});

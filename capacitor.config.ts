@@ -6,10 +6,12 @@ const config: CapacitorConfig = {
   // A interface da app é embutida no APK (export estático em ./out) —
   // não é preciso servidor nenhum para abrir a app.
   webDir: "out",
+  loggingBehavior: "none",
   android: {
+    loggingBehavior: "none",
     // cleartext (HTTP) só é necessário se o utilizador ligar a app a um
     // servidor local na rede Wi-Fi (modo "Servidor" nas Definições).
-    allowMixedContent: true,
+    allowMixedContent: false,
     captureInput: true,
     webContentsDebuggingEnabled: false,
   },
