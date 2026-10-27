@@ -8,11 +8,12 @@
     "build:static": "TUTOR_IA_STATIC=1 next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx scripts/test-client-logic.ts",
+    "test": "tsx scripts/test-client-logic.ts && tsx --test scripts/*.test.ts",
     "android:sync": "npm run build:static && npx cap sync android",
     "android:open": "npx cap open android",
     "android:apk": "cd android && ./gradlew :app:assembleDebug",
-    "android:apk:release": "cd android && ./gradlew :app:assembleRelease"
+    "android:apk:release": "cd android && ./gradlew :app:assembleRelease",
+    "test:integration": "playwright test"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^7.0.1",
@@ -27,6 +28,7 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

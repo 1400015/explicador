@@ -1,25 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAi, buildSystemPrompt, MODEL, THINKING_LEVEL, Subject, SUBJECT_LABELS } from "@/lib/gemini";
-import {
-  containsBlockedContent,
-  outputIsInappropriate,
-  SAFE_FALLBACK,
-  GEMINI_KEY_PATTERN,
-} from "@/lib/safety";
+import { getAi, buildSystemPrompt, MODEL, THINKING_LEVEL } from "@/lib/gemini";
+import { outputIsInappropriate, SAFE_FALLBACK } from "@/lib/safety";
 import { classifyApiError, friendlyApiError } from "@/lib/api-error";
-import { prepareHistory } from "@/lib/gemini-http";
+import { ChatRequestError, readChatRequest } from "@/lib/chat-request";
+import { moderate, MODERATION_UNAVAILABLE } from "@/lib/moderation";
 import {
-  ALLOWED_IMAGE_TYPES,
-  MAX_IMAGES_PER_MESSAGE,
-  MAX_IMAGE_BYTES,
-  MAX_MESSAGE_LENGTH,
   MAX_OUTPUT_TOKENS,
   RATE_LIMIT_MAX_REQUESTS,
   RATE_LIMIT_WINDOW_MS,
-  type ChatImage,
-  type ChatMessage,
 } from "@/lib/shared";
-import { Content, GoogleGenAI, HarmBlockThreshold, HarmCategory, Part } from "@google/genai";
+import {
+  Content,
+  GoogleGenAI,
+  HarmBlockThreshold,
+  HarmCategory,
+  Part,
+} from "@google/genai";
 
 // Clientes Gemini por chave enviada pela app (modo "servidor" com chave do utilizador).
 // Cache limitado para não acumular clientes em memória.
@@ -45,7 +41,7 @@ const MAX_TRACKED_IPS = 1000;
 function isRateLimited(ip: string): boolean {
   const now = Date.now();
   const timestamps = (requestsByIp.get(ip) ?? []).filter(
-    (t) => now - t < RATE_LIMIT_WINDOW_MS
+    (t) => now - t < RATE_LIMIT_WINDOW_MS,
   );
   if (timestamps.length >= RATE_LIMIT_MAX_REQUESTS) {
     requestsByIp.set(ip, timestamps);
@@ -65,155 +61,52 @@ function isRateLimited(ip: string): boolean {
   return false;
 }
 
-// 3.ª camada: a própria IA verifica se a resposta é adequada para 12 anos.
-async function moderationCheck(client: GoogleGenAI, text: string): Promise<boolean> {
-  const prompt = `Avalia se o TEXTO abaixo é adequado para uma criança de 12 anos (sem violência, sexo, ódio, drogas ou instruções perigosas). Responde apenas com a palavra SIM ou NAO.
-
-TEXTO:
-"""
-${text.slice(0, 2000)}
-"""`;
-
-  // 1 retry antes de desistir (falhas de rede transitórias)
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const res = await client.models.generateContent({
-        model: MODEL,
-        contents: prompt,
-        config: {
-          thinkingConfig: { thinkingLevel: "LOW" as never },
-          maxOutputTokens: 16,
-        },
-      });
-      return (res.text ?? "").trim().toUpperCase().startsWith("SIM");
-    } catch (err) {
-      if (attempt === 0) {
-        console.warn("Moderação falhou (1ª tentativa), tentando de novo:", err instanceof Error ? err.message : err);
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      } else {
-        // se a moderação continuar a falhar, deixamos passar (as outras 2 camadas já atuaram)
-        console.warn("Moderação falhou nas 2 tentativas; resposta passa pelas camadas 1 e 2");
-      }
-    }
-  }
-  return true;
-}
-
-function isValidImage(img: unknown): img is ChatImage {
-  if (typeof img !== "object" || img === null) return false;
-  const { mimeType, data } = img as Record<string, unknown>;
-  if (typeof mimeType !== "string" || typeof data !== "string") return false;
-  if (!(ALLOWED_IMAGE_TYPES as readonly string[]).includes(mimeType)) return false;
-  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(data)) return false;
-  const approxBytes = Math.ceil((data.length * 3) / 4);
-  return approxBytes <= MAX_IMAGE_BYTES;
-}
-
-const VALID_SUBJECTS = Object.keys(SUBJECT_LABELS) as Subject[];
-
 export async function POST(request: NextRequest) {
   const ip =
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
 
   if (isRateLimited(ip)) {
     return NextResponse.json(
-      { error: "Muitas mensagens por minuto. Aguarde um pouquinho e tente de novo. 🚊" },
-      { status: 429 }
+      {
+        error:
+          "Muitas mensagens por minuto. Aguarde um pouquinho e tente de novo. 🚊",
+      },
+      { status: 429 },
     );
   }
 
-  let body: unknown;
+  let input;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Corpo da requisição inválido." }, { status: 400 });
+    input = await readChatRequest(request);
+  } catch (error) {
+    const status = error instanceof ChatRequestError ? error.status : 400;
+    return NextResponse.json(
+      {
+        error:
+          error instanceof ChatRequestError
+            ? error.message
+            : "Corpo da requisição inválido.",
+      },
+      { status },
+    );
   }
-
-  const { message, history, subject, images, apiKey } = body as {
-    message?: unknown;
-    history?: unknown;
-    subject?: unknown;
-    images?: unknown;
-    apiKey?: unknown;
-  };
-
+  const {
+    message,
+    subject: validSubject,
+    images: newImages,
+    history: chatHistory,
+    apiKey,
+  } = input;
   let client: GoogleGenAI;
-  if (typeof apiKey === "string" && apiKey.length > 0) {
-    // A app envia a chave guardada no telemóvel (modo "servidor" com chave própria).
-    // Todas as proteções abaixo (rate limit, filtros, safety settings) continuam ativas.
-    if (!GEMINI_KEY_PATTERN.test(apiKey)) {
-      return NextResponse.json(
-        { error: "A chave API guardada não parece válida. Confere nas Definições. ⚙️" },
-        { status: 400 }
-      );
-    }
-    client = getClientForKey(apiKey);
-  } else {
-    try {
-      client = getAi();
-    } catch {
-      return NextResponse.json(
-        { error: "O servidor não tem chave configurada. Guarda a tua chave nas Definições da app. ⚙️" },
-        { status: 500 }
-      );
-    }
-  }
-
-  if (typeof message !== "string" || message.trim().length === 0) {
-    return NextResponse.json({ error: "Envie uma pergunta ou uma foto. 📸" }, { status: 400 });
-  }
-  if (message.length > MAX_MESSAGE_LENGTH) {
+  try {
+    client = apiKey ? getClientForKey(apiKey) : getAi();
+  } catch {
     return NextResponse.json(
-      { error: `Sua mensagem é muito longa. Máximo de ${MAX_MESSAGE_LENGTH} caracteres.` },
-      { status: 400 }
-    );
-  }
-  if (containsBlockedContent(message)) {
-    return NextResponse.json(
-      { error: "Esse assunto não posso ajudar. Vamos voltar para os estudos? 📚" },
-      { status: 400 }
-    );
-  }
-
-  let newImages: ChatImage[] = [];
-  if (images !== undefined) {
-    if (!Array.isArray(images) || images.length > MAX_IMAGES_PER_MESSAGE) {
-      return NextResponse.json(
-        { error: `Você pode enviar no máximo ${MAX_IMAGES_PER_MESSAGE} fotos por vez.` },
-        { status: 400 }
-      );
-    }
-    if (images.length > 0 && message.trim().length === 0) {
-      return NextResponse.json({ error: "Envie uma pergunta ou uma foto. 📸" }, { status: 400 });
-    }
-    for (const img of images) {
-      if (!isValidImage(img)) {
-        return NextResponse.json(
-          { error: "Imagem inválida. Envie fotos em JPEG, PNG ou WebP de até 4 MB." },
-          { status: 400 }
-        );
-      }
-    }
-    newImages = images as ChatImage[];
-  }
-
-  const validSubject: Subject = VALID_SUBJECTS.includes(subject as Subject)
-    ? (subject as Subject)
-    : "geral";
-
-  // Historico: so texto, ultimas MAX_HISTORY_MESSAGES, comeca em "user".
-  // Nao reenviamos imagens antigas (evita pedidos enormes ao servidor/IA).
-  let chatHistory: ChatMessage[] = [];
-  if (Array.isArray(history)) {
-    chatHistory = prepareHistory(
-      history
-        .filter((m): m is ChatMessage => {
-          if (typeof m !== "object" || m === null) return false;
-          const msg = m as Record<string, unknown>;
-          if (msg.role !== "user" && msg.role !== "model") return false;
-          return typeof msg.text === "string" && msg.text.length <= MAX_MESSAGE_LENGTH;
-        })
-        .map((m) => ({ role: m.role, text: m.text }))
+      {
+        error:
+          "O servidor não tem chave configurada. Confere as Definições. ⚙️",
+      },
+      { status: 503 },
     );
   }
 
@@ -235,6 +128,7 @@ export async function POST(request: NextRequest) {
       model: MODEL,
       contents,
       config: {
+        abortSignal: request.signal,
         systemInstruction: buildSystemPrompt(validSubject),
         maxOutputTokens: MAX_OUTPUT_TOKENS,
         thinkingConfig: {
@@ -242,11 +136,26 @@ export async function POST(request: NextRequest) {
           includeThoughts: false,
         },
         safetySettings: [
-          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE },
-          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-          { category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+          {
+            category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+            threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+            threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+            threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+            threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+            threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+          },
         ],
       },
     });
@@ -255,7 +164,8 @@ export async function POST(request: NextRequest) {
 
     if (!text) {
       return NextResponse.json({
-        reply: "Não consegui ver direito essa foto. Tenta tirar outra com mais luz e mais de perto? 📸",
+        reply:
+          "Não consegui ver direito essa foto. Tenta tirar outra com mais luz e mais de perto? 📸",
       });
     }
 
@@ -266,23 +176,41 @@ export async function POST(request: NextRequest) {
     }
 
     // 3.ª camada: verificação de moderação pela própria IA
-    const isSafe = await moderationCheck(client, text);
-    if (!isSafe) {
-      console.warn("Moderação bloqueou resposta inadequada");
+    const isSafe = await moderate(text, async (prompt, abortSignal) => {
+      const result = await client.models.generateContent({
+        model: MODEL,
+        contents: prompt,
+        config: {
+          abortSignal,
+          thinkingConfig: { thinkingLevel: "LOW" as never },
+          maxOutputTokens: 32,
+        },
+      });
+      return result.text ?? "";
+    });
+    if (isSafe === "unavailable")
+      return NextResponse.json(
+        { error: MODERATION_UNAVAILABLE },
+        { status: 503 },
+      );
+    if (isSafe === "rejected")
       return NextResponse.json({ reply: SAFE_FALLBACK });
-    }
 
     return NextResponse.json({ reply: text });
   } catch (error) {
-    console.error("Erro na API do Gemini:", error);
+    console.error("Erro na API do Gemini:", classifyApiError(error));
     // Devolve a causa real (chave invalida, quota, bloqueio, rede) em vez de erro generico.
     const kind = classifyApiError(error);
     const status =
-      kind === "invalid-key" ? 401
-      : kind === "quota" ? 429
-      : kind === "blocked" ? 400
-      : kind === "too-large" ? 413
-      : 500;
+      kind === "invalid-key"
+        ? 401
+        : kind === "quota"
+          ? 429
+          : kind === "blocked" || kind === "invalid-request"
+            ? 400
+            : kind === "too-large"
+              ? 413
+              : 500;
     return NextResponse.json({ error: friendlyApiError(error) }, { status });
   }
 }

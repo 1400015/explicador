@@ -32,6 +32,14 @@ const VALID_KEY = "AIza" + "A1".repeat(17) + "B"; // AIza + 35 chars válidos (f
 const VALID_KEY_AQ = "AQ.Ab" + "x9".repeat(40); // Auth key nova (formato AQ. desde 2026)
 
 async function main() {
+  // Ambiente de armazenamento realista, isolado deste processo de testes.
+  const values = new Map<string, string>();
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, value: {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); },
+    removeItem: (key: string) => { values.delete(key); },
+  } });
+
   console.log("== safety.ts ==");
   ok("chave válida passa no padrão", GEMINI_KEY_PATTERN.test(VALID_KEY));
   ok("chave nova AQ. passa no padrão", GEMINI_KEY_PATTERN.test(VALID_KEY_AQ));

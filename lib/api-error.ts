@@ -5,6 +5,7 @@
 
 export type ApiErrorKind =
   | "invalid-key" // 400/401/403 — a chave não é válida ou não tem permissão
+  | "invalid-request"
   | "quota" // 429 — quota/rate limit excedido
   | "model" // 404 — modelo não existe ou sem acesso
   | "blocked" // 400 com SAFETY — a resposta foi bloqueada pelos filtros
@@ -48,9 +49,10 @@ export function classifyApiError(error: unknown): ApiErrorKind {
   // Extrai o primeiro JSON da mensagem (o SDK mete o body inteiro no .message)
   const jsonStart = message.indexOf("{");
   const jsonEnd = message.lastIndexOf("}");
-  const body = jsonStart >= 0 && jsonEnd > jsonStart
-    ? parseBody(message.slice(jsonStart, jsonEnd + 1))
-    : null;
+  const body =
+    jsonStart >= 0 && jsonEnd > jsonStart
+      ? parseBody(message.slice(jsonStart, jsonEnd + 1))
+      : null;
   const bodyStatus = body?.error?.code;
   const bodyStatusText = body?.error?.status;
   const bodyReason = body?.error?.details?.map((d) => d.reason ?? "").join(",");
@@ -58,22 +60,40 @@ export function classifyApiError(error: unknown): ApiErrorKind {
 
   // Mapear o status textual do body (ex.: "INVALID_ARGUMENT", "RESOURCE_EXHAUSTED")
   if (bodyStatusText === "RESOURCE_EXHAUSTED") return "quota";
-  if (bodyStatusText === "PERMISSION_DENIED" || bodyStatusText === "UNAUTHENTICATED") return "invalid-key";
+  if (
+    bodyStatusText === "PERMISSION_DENIED" ||
+    bodyStatusText === "UNAUTHENTICATED"
+  )
+    return "invalid-key";
   if (bodyStatusText === "NOT_FOUND") return "model";
-  if (bodyStatusText === "UNAVAILABLE" || bodyStatusText === "DEADLINE_EXCEEDED") return "overloaded";
+  if (
+    bodyStatusText === "UNAVAILABLE" ||
+    bodyStatusText === "DEADLINE_EXCEEDED"
+  )
+    return "overloaded";
 
-  if (bodyReason?.includes("SAFETY") || message.includes("SAFETY")) return "blocked";
+  if (bodyReason?.includes("SAFETY") || message.includes("SAFETY"))
+    return "blocked";
   // Pedido demasiado grande (fotos em base64 no historico, etc.)
   if (
     effectiveStatus === 413 ||
     effectiveStatus === 408 ||
-    /payload too large|request entity too large|request too large/i.test(message)
+    /payload too large|request entity too large|request too large/i.test(
+      message,
+    )
   ) {
     return "too-large";
   }
-  if (effectiveStatus === 400 || effectiveStatus === 401 || effectiveStatus === 403) {
+  if (
+    effectiveStatus === 401 ||
+    effectiveStatus === 403 ||
+    /API[_ ]KEY[_ ](INVALID|NOT VALID)|API key not valid/i.test(
+      `${bodyReason} ${message}`,
+    )
+  ) {
     return "invalid-key";
   }
+  if (effectiveStatus === 400) return "invalid-request";
   if (effectiveStatus === 429) return "quota";
   if (effectiveStatus === 404) return "model";
   // Erros do lado do servidor da Google que sao temporarios
@@ -91,7 +111,7 @@ export function classifyApiError(error: unknown): ApiErrorKind {
   const errName = error instanceof Error ? error.name : "";
   const looksLikeTimeout =
     /timeout|timed out|deadline|aborterror|socket hang up|econnreset|econnrefused|etimedout/i.test(
-      `${errName} ${message}`
+      `${errName} ${message}`,
     );
   if (
     error instanceof TypeError ||
@@ -109,6 +129,8 @@ export function classifyApiError(error: unknown): ApiErrorKind {
 const MESSAGES: Record<ApiErrorKind, string> = {
   "invalid-key":
     "A chave API não está a funcionar. Nos pais: ⚙️ Definições → confirma a chave (AIza... ou AQ....) e toca em “Testar chave”.",
+  "invalid-request":
+    "Não consegui processar este pedido. Tenta reformular a pergunta ou enviar menos fotos. 📚",
   quota:
     "Ups, a IA está muito ocupada agora (limite de pedidos atingido). Espera 1 minuto e tenta de novo. ⏱️",
   model:

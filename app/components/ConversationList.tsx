@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { SUBJECT_LABELS } from "@/lib/gemini";
+import { SUBJECT_LABELS } from "@/lib/prompt";
 import type { Subject } from "@/lib/prompt";
 import {
-  loadConversations,
+  useConversations,
   deleteConversation,
   type Conversation,
 } from "@/lib/conversations";
@@ -39,19 +38,12 @@ export default function ConversationList({
   /** Chamado quando uma conversa é apagada, para o chat sincronizar. */
   onDeleted: (id: string) => void;
 }) {
-  const [conversations, setConversations] = useState<Conversation[] | null>(null);
-
-  useEffect(() => {
-    loadConversations().then(setConversations);
-  }, []);
-
+  const { conversations, ready } = useConversations();
   async function handleDelete(id: string) {
     await deleteConversation(id);
-    setConversations((prev) => prev?.filter((c) => c.id !== id) ?? null);
     onDeleted(id);
   }
-
-  if (conversations === null) return null;
+  if (!ready) return null;
 
   if (conversations.length === 0) {
     return (
@@ -63,7 +55,9 @@ export default function ConversationList({
 
   return (
     <div className="mt-6 space-y-2">
-      <h2 className="text-sm font-semibold text-indigo-800">Conversas recentes</h2>
+      <h2 className="text-sm font-semibold text-indigo-800">
+        Conversas recentes
+      </h2>
       {conversations.map((c) => (
         <div
           key={c.id}
@@ -71,19 +65,23 @@ export default function ConversationList({
         >
           <button
             onClick={() => onOpen(c)}
-            className="flex-1 text-left"
+            className="min-w-0 flex-1 text-left"
             title="Abrir conversa"
           >
             <span className="text-sm font-medium text-indigo-900">
-              {SUBJECT_ICONS[c.subject] ?? "💡"} {SUBJECT_LABELS[c.subject] ?? "Geral"}
+              {SUBJECT_ICONS[c.subject] ?? "💡"}{" "}
+              {SUBJECT_LABELS[c.subject] ?? "Geral"}
             </span>
             <span className="block truncate text-xs text-gray-500">
               {c.messages[c.messages.length - 1]?.text ?? "(sem mensagens)"}
             </span>
-            <span className="text-[10px] text-gray-400">{formatTime(c.updatedAt)}</span>
+            <span className="text-[10px] text-gray-400">
+              {formatTime(c.updatedAt)}
+            </span>
           </button>
           <button
             onClick={() => handleDelete(c.id)}
+            aria-label="Apagar conversa"
             title="Apagar conversa"
             className="rounded-full bg-red-50 px-2 py-1 text-xs text-red-500 transition hover:bg-red-100"
           >

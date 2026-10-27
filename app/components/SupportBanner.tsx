@@ -10,11 +10,12 @@ export default function SupportBanner({ onClose }: { onClose: () => void }) {
     >
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-semibold text-amber-900">
-          💛 Se estiveres a passar por algo difícil, não tens de passar sozinho/a. Pedir ajuda é
-          sinal de força!
+          💛 Se estiveres a passar por algo difícil, não tens de passar
+          sozinho/a. Pedir ajuda é sinal de força!
         </p>
         <button
           onClick={onClose}
+          aria-label="Fechar contactos de apoio"
           title="Fechar"
           className="rounded-full px-2 text-amber-700 transition hover:bg-amber-100"
         >
@@ -26,7 +27,9 @@ export default function SupportBanner({ onClose }: { onClose: () => void }) {
           <li key={r.name} className="text-xs text-amber-800">
             {r.emoji} <span className="font-medium">{r.name}</span>
             {r.detail ? ` — ${r.detail}` : ""}
-            {r.contact ? <span className="block font-mono text-[11px]">{r.contact}</span> : null}
+            {r.contact ? (
+              <span className="block font-mono text-[11px]">{r.contact}</span>
+            ) : null}
           </li>
         ))}
       </ul>

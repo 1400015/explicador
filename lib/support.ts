@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * Deteção de pedidos de ajuda: se a criança mencionar bullying, abuso,
  * autolesão ou perigo, a app mostra um banner fixo com contactos de apoio.
@@ -24,11 +22,12 @@ export function needsSupportBanner(text: string): boolean {
   return HELP_PATTERNS.some((pattern) => pattern.test(text));
 }
 
+// Contactos confirmados em 2026-10-27: https://www.sosvozamiga.org/ e https://europa.eu/youreurope/citizens/travel/security-and-emergencies/emergency/index_pt.htm
 export const SUPPORT_RESOURCES = [
   {
     emoji: "🫂",
     name: "SOS Voz Amiga (Portugal)",
-    detail: "Telefone e chat para jovens — todos os dias",
+    detail: "Escuta telefónica — diariamente, das 15h30 às 00h30",
     contact: "213 544 545 · sosvozamiga.org",
   },
   {
@@ -40,7 +39,8 @@ export const SUPPORT_RESOURCES = [
   {
     emoji: "👨‍👩‍👧",
     name: "Um adulto de confiança",
-    detail: "Pais, professores, treinador, avós — conta a alguém em quem confias",
+    detail:
+      "Pais, professores, treinador, avós — conta a alguém em quem confias",
     contact: "",
   },
 ];

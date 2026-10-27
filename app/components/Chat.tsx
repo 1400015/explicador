@@ -1,14 +1,25 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Subject, SUBJECT_LABELS } from "@/lib/gemini";
+import { type Subject, SUBJECT_LABELS } from "@/lib/prompt";
 import { askTutorDirect, TutorError } from "@/lib/gemini-client";
 import { processImageFiles } from "@/lib/images";
 import { takePhoto } from "@/lib/camera";
-import { isSpeechRecognitionAvailable, listenOnce, speak, stopSpeaking } from "@/lib/voice";
+import {
+  isSpeechRecognitionAvailable,
+  listenOnce,
+  speak,
+  stopSpeaking,
+} from "@/lib/voice";
 import { isNativeApp, loadSettings, type AppSettings } from "@/lib/settings";
-import { upsertConversation, deleteConversation, type StoredMessage } from "@/lib/conversations";
+import {
+  conversationStore,
+  useConversations,
+  type Conversation,
+} from "@/lib/conversations";
 import { needsSupportBanner } from "@/lib/support";
+import { RequestGuard } from "@/lib/request-guard";
+import { prepareHistory } from "@/lib/history";
 import { recordQuestion } from "@/lib/stats";
 import { calcFeedback, checkCalculation } from "@/lib/calc-check";
 import ConversationList from "./ConversationList";
@@ -21,24 +32,8 @@ import {
   type ChatMessage,
 } from "@/lib/shared";
 
-type StoredState = { messages: StoredMessage[]; subject: Subject };
-
-type PendingImage = {
-  id: string;
-  previewUrl: string;
-  image: ChatImage;
-};
-
-const STORAGE_KEY = "tutor-ia-history-v1";
-const STORAGE_EVENT = "tutor-ia-storage";
-const EMPTY_STATE: StoredState = { messages: [], subject: "geral" };
-
-function newConversationId(): string {
-  return `c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
+type PendingImage = { id: string; previewUrl: string; image: ChatImage };
 const SUBJECTS = Object.keys(SUBJECT_LABELS) as Subject[];
-
 const SUBJECT_ICONS: Record<Subject, string> = {
   matematica: "➗",
   ciencias: "🔬",
@@ -47,64 +42,33 @@ const SUBJECT_ICONS: Record<Subject, string> = {
   geografia: "🌎",
   geral: "💡",
 };
-
 const GREETINGS: Record<Subject, string> = {
   matematica: "Oi! Pronto para dominar a matemática? Manda a dúvida! ➗",
-  ciencias: "E aí, cientista! Qual mistério da ciência vamos desvendar hoje? 🔬",
-  portugues: "Olá! Bora turbinar esse português? Me conta o que você quer estudar! 📖",
+  ciencias:
+    "E aí, cientista! Qual mistério da ciência vamos desvendar hoje? 🔬",
+  portugues:
+    "Olá! Bora turbinar esse português? Me conta o que você quer estudar! 📖",
   historia: "Salve! Que página da história a gente vai explorar hoje? 🏛️",
-  geografia: "Oi, explorador! Pronto para viajar pelo mundo sem sair de casa? 🌎",
-  geral: "Oi! Estou aqui para te ajudar em qualquer matéria. O que vamos estudar? 💡",
+  geografia:
+    "Oi, explorador! Pronto para viajar pelo mundo sem sair de casa? 🌎",
+  geral:
+    "Oi! Estou aqui para te ajudar em qualquer matéria. O que vamos estudar? 💡",
 };
-
-let cache: StoredState | null = null;
-
-function loadState(): StoredState {
-  if (cache) return cache;
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    cache = saved ? (JSON.parse(saved) as StoredState) : EMPTY_STATE;
-  } catch {
-    cache = EMPTY_STATE;
-  }
-  return cache;
-}
-
-function saveState(state: StoredState) {
-  cache = state;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // armazenamento cheio ou indisponível: segue só em memória
-  }
-  window.dispatchEvent(new Event(STORAGE_EVENT));
-}
-
-function subscribe(callback: () => void) {
-  window.addEventListener(STORAGE_EVENT, callback);
-  window.addEventListener("storage", callback);
-  return () => {
-    window.removeEventListener(STORAGE_EVENT, callback);
-    window.removeEventListener("storage", callback);
-  };
-}
-
-function getSnapshot(): StoredState {
-  return loadState();
-}
-
-function getServerSnapshot(): StoredState {
-  return EMPTY_STATE;
-}
+const noSubscription = () => () => {};
+const noSpeechOnServer = () => false;
 
 export default function Chat() {
-  const stored = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  const { messages: storedMessages, subject } = stored;
-
-  const [messages, setMessages] = useState<ChatMessage[]>(() =>
-    storedMessages.map((m) => ({ role: m.role, text: m.text }))
-  );
+  const stored = useConversations();
+  const { subject } = stored;
+  const active = stored.conversations.find((c) => c.id === stored.activeId);
+  const messages = active?.messages ?? [];
+  const [pendingUser, setPendingUser] = useState<ChatMessage | null>(null);
+  const displayMessages = pendingUser ? [...messages, pendingUser] : messages;
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const pendingRef = useRef(pendingImages);
+  useEffect(() => {
+    pendingRef.current = pendingImages;
+  }, [pendingImages]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,99 +79,123 @@ export default function Chat() {
     pin: null,
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // ID da conversa: gerado após a hidratação (Date.now no render quebra o prerender).
-  const [conversationId, setConversationId] = useState<string>("");
+  const [processing, setProcessing] = useState(false);
   const [listening, setListening] = useState(false);
   const [supportDismissed, setSupportDismissed] = useState(false);
+  const [supportTriggered, setSupportTriggered] = useState(false);
   const [offlineTipsOpen, setOfflineTipsOpen] = useState(false);
-  const [speakingMessageIndex, setSpeakingMessageIndex] = useState<number | null>(null);
-  const speechSupported = isSpeechRecognitionAvailable();
+  const [speakingMessageIndex, setSpeakingMessageIndex] = useState<
+    number | null
+  >(null);
+  const speechSupported = useSyncExternalStore(
+    noSubscription,
+    isSpeechRecognitionAvailable,
+    noSpeechOnServer,
+  );
   const showSupportBanner =
-    !supportDismissed &&
-    messages.length > 0 &&
-    messages[messages.length - 1].role === "user" &&
-    needsSupportBanner(messages[messages.length - 1].text);
+    !supportDismissed && (active?.supportNeeded || supportTriggered);
+  const guard = useRef(new RequestGuard());
+  const requestConversation = useRef<string | null>(null);
+  const mediaGeneration = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     loadSettings().then(setSettings);
   }, []);
-
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading, pendingImages]);
-
+  }, [active, pendingUser, loading, pendingImages]);
   useEffect(() => {
+    const requests = guard.current;
     return () => {
-      pendingImages.forEach((p) => {
-        if (p.previewUrl.startsWith("blob:")) URL.revokeObjectURL(p.previewUrl);
-      });
+      requests.cancel();
+      stopSpeaking();
+      pendingRef.current.forEach(releaseImage);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function persistMessages(next: ChatMessage[]) {
-    setMessages(next);
-    saveState({
-      subject: loadState().subject,
-      messages: next.map(({ role, text }) => ({ role, text })),
-    });
-    // Garante um ID antes de guardar (o ID só existe após a hidratação).
-    const id = conversationId || newConversationId();
-    if (!conversationId) setConversationId(id);
-    if (next.length > 0) {
-      void upsertConversation({
-        id,
-        subject,
-        updatedAt: Date.now(),
-        messages: next.map(({ role, text }) => ({ role, text })) as StoredMessage[],
-      });
-    }
-  }
+  useEffect(
+    () =>
+      conversationStore.subscribe(() => {
+        if (
+          requestConversation.current &&
+          conversationStore.getSnapshot().activeId !==
+            requestConversation.current
+        ) {
+          guard.current.cancel();
+          requestConversation.current = null;
+          setLoading(false);
+          setPendingUser(null);
+          setSupportTriggered(false);
+          setSupportDismissed(false);
+        }
+      }),
+    [],
+  );
 
+  function releaseImage(p: PendingImage) {
+    if (p.previewUrl.startsWith("blob:")) URL.revokeObjectURL(p.previewUrl);
+  }
   function updateSubject(next: Subject) {
-    saveState({ ...loadState(), subject: next });
+    if (!loading) void conversationStore.setSubject(next);
   }
 
   async function handleFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (files.length === 0) return;
-
+    if (!files.length || loading || processing || listening) return;
     if (pendingImages.length + files.length > MAX_IMAGES_PER_MESSAGE) {
-      setError(`Você pode anexar no máximo ${MAX_IMAGES_PER_MESSAGE} fotos por mensagem.`);
+      setError("Podes anexar no máximo 4 fotos por mensagem.");
       return;
     }
-
+    const generation = mediaGeneration.current;
     setError(null);
+    setProcessing(true);
     try {
       const processed = await processImageFiles(files);
+      if (generation !== mediaGeneration.current) return;
       const previews = files.map((file, i) => ({
-        id: `${Date.now()}-${i}`,
+        id:
+          typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : String(Date.now()) + Math.random(),
         previewUrl: URL.createObjectURL(file),
         image: processed[i],
       }));
-      setPendingImages((prev) => [...prev, ...previews]);
+      setPendingImages((prev) => {
+        const all = [...prev, ...previews];
+        all.slice(MAX_IMAGES_PER_MESSAGE).forEach(releaseImage);
+        return all.slice(0, MAX_IMAGES_PER_MESSAGE);
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não consegui processar a imagem.");
+      if (generation === mediaGeneration.current)
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Não consegui processar a imagem.",
+        );
+    } finally {
+      if (generation === mediaGeneration.current) setProcessing(false);
     }
   }
-
   async function handleListen() {
-    if (listening || loading) return;
+    if (listening || loading || processing) return;
+    const generation = mediaGeneration.current;
     setError(null);
     setListening(true);
     try {
       const text = await listenOnce();
-      setInput((prev) => (prev ? `${prev} ${text}` : text));
+      if (generation === mediaGeneration.current)
+        setInput((prev) => (prev ? prev + " " + text : text).slice(0, 1000));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não consegui ouvir. Tenta outra vez. 🎤");
+      if (generation === mediaGeneration.current)
+        setError(err instanceof Error ? err.message : "Não consegui ouvir.");
     } finally {
-      setListening(false);
+      if (generation === mediaGeneration.current) setListening(false);
     }
   }
-
   function handleSpeak(index: number, text: string) {
     if (speakingMessageIndex === index) {
       stopSpeaking();
@@ -217,35 +205,47 @@ export default function Chat() {
     setSpeakingMessageIndex(index);
     speak(text, () => setSpeakingMessageIndex(null));
   }
-
   async function handleTakePhoto() {
-    if (loading) return;
-    if (pendingImages.length >= MAX_IMAGES_PER_MESSAGE) {
-      setError(`Você pode anexar no máximo ${MAX_IMAGES_PER_MESSAGE} fotos por mensagem.`);
+    if (
+      loading ||
+      processing ||
+      listening ||
+      pendingImages.length >= MAX_IMAGES_PER_MESSAGE
+    )
       return;
-    }
+    const generation = mediaGeneration.current;
     setError(null);
+    setProcessing(true);
     try {
       const image = await takePhoto();
-      setPendingImages((prev) => [
-        ...prev,
-        {
-          id: `camera-${Date.now()}`,
-          previewUrl: `data:${image.mimeType};base64,${image.data}`,
-          image,
-        },
-      ]);
+      if (generation !== mediaGeneration.current) return;
+      setPendingImages((prev) =>
+        [
+          ...prev,
+          {
+            id:
+              typeof crypto.randomUUID === "function"
+                ? crypto.randomUUID()
+                : String(Date.now()) + Math.random(),
+            previewUrl: "data:" + image.mimeType + ";base64," + image.data,
+            image,
+          },
+        ].slice(0, MAX_IMAGES_PER_MESSAGE),
+      );
     } catch (err) {
-      if (err instanceof Error && err.message !== "Captura cancelada.") {
+      if (
+        generation === mediaGeneration.current &&
+        err instanceof Error &&
+        err.message !== "Captura cancelada."
+      )
         setError(err.message);
-      }
+    } finally {
+      if (generation === mediaGeneration.current) setProcessing(false);
     }
   }
-
   function removePendingImage(id: string) {
     setPendingImages((prev) => {
-      const target = prev.find((p) => p.id === id);
-      if (target && target.previewUrl.startsWith("blob:")) URL.revokeObjectURL(target.previewUrl);
+      prev.filter((p) => p.id === id).forEach(releaseImage);
       return prev.filter((p) => p.id !== id);
     });
   }
@@ -253,124 +253,124 @@ export default function Chat() {
   async function askTutor(
     text: string,
     images: ChatImage[],
-    history: ChatMessage[]
-  ): Promise<string | null> {
+    history: ChatMessage[],
+    signal: AbortSignal,
+  ): Promise<string> {
     const native = isNativeApp();
-
     if (native && settings.mode === "direct") {
-      // App Android: o telemóvel fala diretamente com a Gemini (sem servidor).
-      if (!settings.apiKey.trim()) {
-        setError("Guarda a tua chave API nas Definições (⚙️) para a app funcionar.");
-        return null;
-      }
+      if (!settings.apiKey.trim())
+        throw new TutorError(
+          "Guarda a tua chave API nas Definições (⚙️) para a app funcionar.",
+        );
       return askTutorDirect({
         apiKey: settings.apiKey.trim(),
         message: text,
         history,
         subject,
         images,
+        signal,
       });
     }
-
-    if (native && settings.mode === "server" && settings.serverUrl.trim()) {
-      // App Android + servidor próprio do utilizador.
-      const base = settings.serverUrl.trim().replace(/\/+$/, "");
-      const res = await fetch(`${base}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, images, history, subject }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "O servidor não respondeu. Confere o endereço nas Definições.");
-        return null;
-      }
-      return data.reply as string;
-    }
-
-    if (native && settings.mode === "server") {
-      // App Android sem servidor: explica em vez de ficar em branco.
-      setError(
-        "Esta app não tem servidor ligado. Nas Definições (⚙️), escolhe o modo “Esta app” e guarda a tua chave API — ou indica o endereço de um servidor próprio."
+    if (native && settings.mode === "server" && !settings.serverUrl.trim())
+      throw new TutorError(
+        "Esta app não tem servidor ligado. Nas Definições (⚙️), escolhe “Esta app” ou indica um servidor próprio.",
       );
-      return null;
-    }
-
-    // Web (PWA/navegador): fala com o servidor onde a app está publicada.
-    const res = await fetch("/api/chat", {
+    const base = native ? settings.serverUrl.trim().replace(/\/+$/, "") : "";
+    const res = await fetch(base + "/api/chat", {
       method: "POST",
+      signal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message: text,
         images,
-        history,
+        history: prepareHistory(history),
         subject,
-        apiKey: settings.mode === "direct" ? settings.apiKey : undefined,
+        apiKey:
+          !native && settings.mode === "direct" ? settings.apiKey : undefined,
       }),
     });
     const data = await res.json();
-    if (!res.ok) {
-      setError(data.error ?? "Algo deu errado. Tenta de novo?");
-      return null;
-    }
-    return data.reply as string;
+    if (!res.ok)
+      throw new TutorError(
+        typeof data.error === "string"
+          ? data.error
+          : "O servidor não conseguiu responder. Tenta novamente.",
+      );
+    if (typeof data.reply !== "string" || !data.reply.trim())
+      throw new TutorError("O tutor não enviou uma resposta. Tenta novamente.");
+    return data.reply;
   }
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
-    const text = input.trim() || (pendingImages.length > 0 ? "Olha essa foto do meu trabalho, pode me ajudar?" : "");
-    if ((!text && pendingImages.length === 0) || loading) return;
-
+    const draft = input;
+    const text =
+      input.trim() ||
+      (pendingImages.length
+        ? "Olha essa foto do meu trabalho, pode me ajudar?"
+        : "");
+    if (!text || loading || processing || listening || !stored.ready) return;
+    requestConversation.current = null;
+    const request = guard.current.begin();
+    const images = pendingImages.map((p) => p.image);
+    const history = messages;
     setError(null);
     setInput("");
-
-    const images = pendingImages.map((p) => p.image);
-
-    // Verificador de cálculo: "12*4+3 = 51" responde localmente, sem IA.
-    if (images.length === 0) {
-      const calcResult = checkCalculation(text);
-      const feedback = calcFeedback(calcResult);
-      if (feedback !== null) {
-        void recordQuestion(subject);
-        const calcMessages: ChatMessage[] = [...messages, { role: "user", text }];
-        persistMessages([...calcMessages, { role: "model", text: feedback }]);
-        return;
-      }
-    }
-
-    void recordQuestion(subject);
-    const newMessages: ChatMessage[] = [...messages, { role: "user", text, images }];
-    persistMessages(newMessages);
-    setPendingImages([]);
     setLoading(true);
-
+    setPendingUser({ role: "user", text, images });
+    if (needsSupportBanner(text)) {
+      setSupportTriggered(true);
+      setSupportDismissed(false);
+    }
     try {
-      const reply = await askTutor(text, images, messages);
-      if (reply === null) {
-        persistMessages(messages);
-        return;
-      }
-      persistMessages([...newMessages, { role: "model", text: reply }]);
+      const id = await conversationStore.ensureActive();
+      if (!guard.current.isCurrent(request)) return;
+      if (!id)
+        throw new TutorError(
+          "Não consegui abrir a conversa. Tenta guardar novamente.",
+        );
+      requestConversation.current = id;
+      const current = () =>
+        guard.current.isCurrent(request) &&
+        conversationStore.getSnapshot().activeId === id;
+      const feedback = images.length
+        ? null
+        : calcFeedback(checkCalculation(text));
+      const reply =
+        feedback ?? (await askTutor(text, images, history, request.signal));
+      if (!current()) return;
+      await conversationStore.append(id, [
+        { role: "user", text, images },
+        { role: "model", text: reply },
+      ]);
+      if (!current()) return;
+      void recordQuestion(subject);
+      pendingImages.forEach(releaseImage);
+      setPendingImages([]);
     } catch (err) {
+      if (!guard.current.isCurrent(request)) return;
+      setInput(draft);
       setError(
         err instanceof TutorError
           ? err.message
-          : "Não consegui falar com o tutor agora. Verifica sua internet e tenta de novo."
+          : "Não consegui falar com o tutor. Verifica a ligação e tenta de novo.",
       );
-      if (!(err instanceof TutorError)) {
-        setOfflineTipsOpen(true);
-      }
-      persistMessages(messages);
+      if (!(err instanceof TutorError)) setOfflineTipsOpen(true);
     } finally {
-      setLoading(false);
+      if (guard.current.isCurrent(request)) {
+        setPendingUser(null);
+        setLoading(false);
+      }
     }
   }
 
   async function handleExplainSimpler(index: number) {
-    if (loading) return;
+    if (loading || !active) return;
     const target = messages[index];
     if (!target || target.role !== "model") return;
-
+    const id = active.id;
+    const request = guard.current.begin();
+    requestConversation.current = id;
     setError(null);
     setLoading(true);
     try {
@@ -378,63 +378,59 @@ export default function Chat() {
         .slice(0, index)
         .reverse()
         .find((m) => m.role === "user");
-      const original = question?.text ?? "a tua última explicação";
-      const request = `Não entendi a tua última resposta sobre "${original.slice(0, 200)}". Podes explicar de um jeito mais simples, com um exemplo do dia a dia e passos mais curtos?`;
-      const reply = await askTutor(request, [], messages);
-      if (reply === null) return;
-      const next: ChatMessage[] = [
-        ...messages,
-        { role: "user" as const, text: request },
-        { role: "model" as const, text: reply },
-      ];
-      persistMessages(next);
+      const text =
+        'Não entendi a tua última resposta sobre "' +
+        (question?.text ?? "a tua última explicação").slice(0, 200) +
+        '". Podes explicar de um jeito mais simples, com um exemplo do dia a dia e passos mais curtos?';
+      const reply = await askTutor(text, [], messages, request.signal);
+      if (
+        guard.current.isCurrent(request) &&
+        conversationStore.getSnapshot().activeId === id
+      )
+        await conversationStore.append(id, [
+          { role: "user", text },
+          { role: "model", text: reply },
+        ]);
     } catch (err) {
-      setError(
-        err instanceof TutorError
-          ? err.message
-          : "Não consegui reformular agora. Tenta de novo daqui a pouco."
-      );
+      if (guard.current.isCurrent(request))
+        setError(
+          err instanceof TutorError
+            ? err.message
+            : "Não consegui reformular agora. Tenta de novo.",
+        );
     } finally {
-      setLoading(false);
+      if (guard.current.isCurrent(request)) setLoading(false);
     }
   }
-
+  function resetInteraction() {
+    requestConversation.current = null;
+    guard.current.cancel();
+    mediaGeneration.current++;
+    stopSpeaking();
+    setSpeakingMessageIndex(null);
+    setListening(false);
+    setProcessing(false);
+    pendingImages.forEach(releaseImage);
+    setPendingImages([]);
+    setPendingUser(null);
+    setLoading(false);
+    setInput("");
+    setError(null);
+    setSupportDismissed(false);
+    setSupportTriggered(false);
+    setOfflineTipsOpen(false);
+  }
   function clearChat() {
-    stopSpeaking();
-    setSpeakingMessageIndex(null);
-    pendingImages.forEach((p) => {
-      if (p.previewUrl.startsWith("blob:")) URL.revokeObjectURL(p.previewUrl);
-    });
-    setPendingImages([]);
-    setMessages([]);
-    setSupportDismissed(false);
-    // Apaga a conversa guardada também — "limpar" tem de limpar de verdade.
-    if (conversationId) {
-      void deleteConversation(conversationId);
-    }
-    setConversationId(newConversationId());
-    saveState({ messages: [], subject });
-    setError(null);
+    resetInteraction();
+    void conversationStore.clear();
   }
-
-  function openConversation(conversation: {
-    id: string;
-    subject: Subject;
-    messages: StoredMessage[];
-  }) {
-    stopSpeaking();
-    setSpeakingMessageIndex(null);
-    setPendingImages([]);
-    setSupportDismissed(false);
-    setConversationId(conversation.id);
-    setMessages(conversation.messages.map((m) => ({ role: m.role, text: m.text })));
-    saveState({ subject: conversation.subject, messages: conversation.messages });
-    updateSubject(conversation.subject);
-    setError(null);
+  function openConversation(conversation: Conversation) {
+    resetInteraction();
+    void conversationStore.open(conversation.id);
   }
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-gradient-to-b from-sky-100 to-indigo-100">
+    <div className="flex h-[100dvh] min-w-0 flex-col bg-gradient-to-b from-sky-100 to-indigo-100">
       <header className="border-b border-indigo-100 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-2xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
@@ -447,6 +443,8 @@ export default function Chat() {
             )}
           </div>
           <button
+            ref={settingsButtonRef}
+            aria-label="Definições (pais)"
             onClick={() => setSettingsOpen(true)}
             title="Definições (pais)"
             className="rounded-full bg-indigo-100 px-3 py-1 text-lg text-indigo-700 transition hover:bg-indigo-200"
@@ -457,6 +455,8 @@ export default function Chat() {
             {SUBJECTS.map((s) => (
               <button
                 key={s}
+                disabled={loading}
+                aria-pressed={subject === s}
                 onClick={() => updateSubject(s)}
                 className={`rounded-full px-3 py-1 text-sm font-medium transition ${
                   subject === s
@@ -471,37 +471,42 @@ export default function Chat() {
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-2 overflow-y-auto px-4 py-4">
-        {messages.length === 0 && !loading && (
+      <main
+        aria-label="Conversa com o tutor"
+        className="mx-auto flex min-h-0 min-w-0 w-full max-w-2xl flex-1 flex-col gap-2 overflow-y-auto px-4 py-4"
+      >
+        {messages.length === 0 && !loading && stored.ready && (
           <div className="mt-10 text-center">
             <div className="mb-4 text-6xl">👋</div>
-            <p className="text-lg font-medium text-indigo-900">{GREETINGS[subject]}</p>
+            <p className="text-lg font-medium text-indigo-900">
+              {GREETINGS[subject]}
+            </p>
             <p className="mt-2 text-sm text-indigo-700">
-              Dica: você pode anexar uma foto do seu caderno ou ficha com o botão 📎!
+              Dica: você pode anexar uma foto do seu caderno ou ficha com o
+              botão 📎!
             </p>
             <ConversationList
               onOpen={openConversation}
-              onDeleted={(id) => {
-                if (id === conversationId) {
-                  setMessages([]);
-                  setConversationId(newConversationId());
-                }
+              onDeleted={() => {
+                resetInteraction();
               }}
             />
           </div>
         )}
 
-        {messages.map((m, i) => (
+        {displayMessages.map((m, i) => (
           <div
             key={i}
-            className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-[15px] leading-relaxed shadow-sm ${
+            className={`max-w-[90%] break-words whitespace-pre-wrap rounded-2xl px-4 py-3 text-[15px] leading-relaxed shadow-sm ${
               m.role === "user"
                 ? "self-end bg-indigo-600 text-white"
                 : "self-start bg-white text-gray-800"
             }`}
           >
             {m.role === "model" && (
-              <span className="mb-1 block text-xs font-semibold text-indigo-500">Tutor</span>
+              <span className="mb-1 block text-xs font-semibold text-indigo-500">
+                Tutor
+              </span>
             )}
             {m.images && m.images.length > 0 && (
               <span className="mb-2 flex flex-wrap gap-2">
@@ -521,7 +526,11 @@ export default function Chat() {
               <span className="mt-2 flex items-center gap-3">
                 <button
                   onClick={() => handleSpeak(i, m.text)}
-                  title={speakingMessageIndex === i ? "Parar leitura" : "Ouvir esta resposta"}
+                  title={
+                    speakingMessageIndex === i
+                      ? "Parar leitura"
+                      : "Ouvir esta resposta"
+                  }
                   className={`text-xs font-medium ${
                     speakingMessageIndex === i
                       ? "text-red-500"
@@ -543,8 +552,32 @@ export default function Chat() {
           </div>
         ))}
 
+        {processing && (
+          <p role="status" className="text-sm text-indigo-800">
+            A preparar a fotografia…
+          </p>
+        )}
+        {stored.error && (
+          <p
+            role="alert"
+            className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900"
+          >
+            {stored.error}{" "}
+            <button
+              className="underline"
+              onClick={() => void conversationStore.retry()}
+            >
+              Tentar guardar novamente
+            </button>
+          </p>
+        )}
+
         {loading && (
-          <div className="flex max-w-[85%] items-center gap-2 self-start rounded-2xl bg-white px-4 py-3 text-gray-500 shadow-sm">
+          <div
+            role="status"
+            aria-label="O tutor está a preparar a resposta"
+            className="flex max-w-[85%] items-center gap-2 self-start rounded-2xl bg-white px-4 py-3 text-gray-500 shadow-sm"
+          >
             <span className="animate-bounce">●</span>
             <span className="animate-bounce [animation-delay:150ms]">●</span>
             <span className="animate-bounce [animation-delay:300ms]">●</span>
@@ -552,21 +585,32 @@ export default function Chat() {
         )}
 
         {error && (
-          <div className="self-center rounded-xl bg-red-100 px-4 py-2 text-sm text-red-700">
+          <div
+            role="alert"
+            className="self-center rounded-xl bg-red-100 px-4 py-2 text-sm text-red-700"
+          >
             {error}
           </div>
         )}
 
-        {showSupportBanner && <SupportBanner onClose={() => setSupportDismissed(true)} />}
+        {showSupportBanner && (
+          <SupportBanner onClose={() => setSupportDismissed(true)} />
+        )}
 
         {offlineTipsOpen && !loading && (
-          <OfflineTips subject={subject} onClose={() => setOfflineTipsOpen(false)} />
+          <OfflineTips
+            subject={subject}
+            onClose={() => setOfflineTipsOpen(false)}
+          />
         )}
 
         <div ref={bottomRef} />
       </main>
 
-      <footer className="border-t border-indigo-100 bg-white/80 backdrop-blur">
+      <footer
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        className="border-t border-indigo-100 bg-white/80 backdrop-blur"
+      >
         {pendingImages.length > 0 && (
           <div className="mx-auto flex max-w-2xl flex-wrap gap-2 px-4 pt-3">
             {pendingImages.map((p) => (
@@ -580,6 +624,7 @@ export default function Chat() {
                 <button
                   type="button"
                   onClick={() => removePendingImage(p.id)}
+                  aria-label="Remover foto"
                   title="Remover foto"
                   className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-xs text-white"
                 >
@@ -591,7 +636,7 @@ export default function Chat() {
         )}
         <form
           onSubmit={sendMessage}
-          className="mx-auto flex max-w-2xl items-center gap-2 px-4 py-3"
+          className="mx-auto grid w-full max-w-2xl grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-3"
         >
           <input
             ref={fileInputRef}
@@ -601,40 +646,50 @@ export default function Chat() {
             hidden
             onChange={handleFilesSelected}
           />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={loading}
-            title="Anexar foto da galeria"
-            className="rounded-full bg-indigo-100 px-3 py-2 text-xl text-indigo-700 transition hover:bg-indigo-200 disabled:opacity-50"
-          >
-            📎
-          </button>
-          <button
-            type="button"
-            onClick={handleTakePhoto}
-            disabled={loading}
-            title="Tirar foto com a câmara"
-            className="rounded-full bg-indigo-100 px-3 py-2 text-xl text-indigo-700 transition hover:bg-indigo-200 disabled:opacity-50"
-          >
-            📷
-          </button>
-          {speechSupported && (
+          <div className="col-span-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={handleListen}
-              disabled={loading || listening}
-              title={listening ? "A ouvir... fala agora" : "Falar em vez de escrever"}
-              className={`rounded-full px-3 py-2 text-xl transition disabled:opacity-50 ${
-                listening
-                  ? "animate-pulse bg-red-500 text-white"
-                  : "bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
-              }`}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={loading || processing || listening}
+              aria-label="Anexar foto da galeria"
+              title="Anexar foto da galeria"
+              className="rounded-full bg-indigo-100 px-3 py-2 text-xl text-indigo-700 transition hover:bg-indigo-200 disabled:opacity-50"
             >
-              🎤
+              📎
             </button>
-          )}
+            <button
+              type="button"
+              onClick={handleTakePhoto}
+              disabled={loading || processing || listening}
+              aria-label="Tirar foto com a câmara"
+              title="Tirar foto com a câmara"
+              className="rounded-full bg-indigo-100 px-3 py-2 text-xl text-indigo-700 transition hover:bg-indigo-200 disabled:opacity-50"
+            >
+              📷
+            </button>
+            {speechSupported && (
+              <button
+                type="button"
+                onClick={handleListen}
+                disabled={loading || listening || processing}
+                aria-label="Ditar pergunta"
+                title={
+                  listening
+                    ? "A ouvir... fala agora"
+                    : "Falar em vez de escrever"
+                }
+                className={`rounded-full px-3 py-2 text-xl transition disabled:opacity-50 ${
+                  listening
+                    ? "animate-pulse bg-red-500 text-white"
+                    : "bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                }`}
+              >
+                🎤
+              </button>
+            )}
+          </div>
           <input
+            aria-label="A tua pergunta"
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -648,21 +703,28 @@ export default function Chat() {
             spellCheck={true}
             lang="pt-BR"
             inputMode="text"
-            className="flex-1 rounded-full border border-indigo-200 bg-white px-4 py-2 text-[15px] text-gray-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-60"
+            className="min-w-0 w-full rounded-full border border-indigo-200 bg-white px-4 py-2 text-[15px] text-gray-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-60"
           />
           <button
             type="submit"
-            disabled={loading || (!input.trim() && pendingImages.length === 0)}
+            disabled={
+              !stored.ready ||
+              loading ||
+              processing ||
+              listening ||
+              (!input.trim() && pendingImages.length === 0)
+            }
             className="rounded-full bg-indigo-600 px-5 py-2 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
           >
             Enviar
           </button>
-          {messages.length > 0 && (
+          {(messages.length > 0 || loading || processing) && (
             <button
               type="button"
               onClick={clearChat}
+              aria-label="Limpar conversa"
               title="Limpar conversa"
-              className="rounded-full bg-gray-200 px-3 py-2 text-gray-600 transition hover:bg-gray-300"
+              className="col-span-2 justify-self-end rounded-full bg-gray-200 px-3 py-2 text-gray-600 transition hover:bg-gray-300"
             >
               🗑️
             </button>

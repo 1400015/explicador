@@ -4,6 +4,29 @@ Um tutor de estudos com IA (Google Gemini) pensado para estudantes de ~12 anos.
 A IA explica com linguagem simples, usa exemplos do dia a dia, **não dá respostas prontas**
 e guia com perguntas para a criança mesma chegar à solução.
 
+
+## Correções do primeiro bloco (código deste ramo)
+
+O chat web, a limpeza de conversas, a moderação e o layout móvel têm regressões
+executadas também no CI. Os testes de integração arrancam o servidor compilado com
+um transporte Gemini simulado carregado apenas pelo processo de testes. Não precisam
+de chave real; a aplicação normal continua a usar a API Google.
+
+O histórico migra para um único formato local versionado: preserva o ID da conversa
+ativa, confirma a gravação antes de remover os dados antigos e apresenta um aviso se
+o dispositivo não conseguir guardar/apagar. As fotografias são mantidas apenas na
+memória da sessão e não são gravadas no histórico. Uma falha de envio conserva a
+pergunta e os anexos para repetir.
+
+Se a moderação estiver indisponível, a resposta gerada não é mostrada nem guardada.
+O pedido pode ser repetido. Os contactos de apoio mantêm-se visíveis depois da resposta
+até serem dispensados ou a conversa ser encerrada.
+
+Os APKs disponibilizados na raiz são os artefactos da versão 1.1.5. Para experimentar
+as correções deste ramo no Android é necessário recompilar e validar no dispositivo.
+O armazenamento protegido da chave e a distribuição de novos APKs pertencem às
+entregas seguintes.
+
 ## Stack
 
 - Next.js (App Router) + TypeScript + Tailwind CSS
@@ -81,7 +104,7 @@ safety settings do Gemini, moderação por IA e limites de tamanho.
    restantes categorias em ONLY_HIGH.
 3. **Filtro de saída** (`lib/safety.ts`): deteta padrões de conteúdo inadequado na
    resposta da IA e substitui por uma resposta segura.
-4. **Moderação por IA**: uma segunda chamada ao modelo (thinking LOW, máx. 16
+4. **Moderação por IA**: uma segunda chamada ao modelo (thinking LOW, máx. 32
    tokens) julga se o texto é adequado para 12 anos; se não for, é substituído.
 
 A lógica de segurança é **partilhada** entre servidor (`app/api/chat/route.ts`) e app
@@ -98,7 +121,7 @@ A lógica de segurança é **partilhada** entre servidor (`app/api/chat/route.ts
 - **Voz**: 🎤 ditado (plugin nativo `@capacitor-community/speech-recognition` no Android;
   Web Speech API no browser) e 🔊 leitura de respostas (speechSynthesis, pt-BR)
 - Rate limit: 20 requisições/minuto (por IP no servidor; local no modo "Esta app")
-- Limite de 1000 caracteres por mensagem, 4 fotos por mensagem e 512 tokens por resposta
+- Limite de 1000 caracteres por mensagem, 4 fotos por mensagem e 1024 tokens por resposta
 - Validação de imagens (tipo permitido, tamanho, base64 válido)
 - Redimensionamento no cliente + remoção de metadados EXIF/GPS
 - Histórico limitado às últimas 20 mensagens
@@ -158,7 +181,11 @@ abrir a pasta `android/` — ele trata de tudo.
 ## Testes
 
 ```bash
-npm test    # 76 testes: filtros de segurança, prompt, validações, PIN, conversas, estatísticas, cálculo
+npm test                 # lógica, transportes simulados e regressões de armazenamento/moderação
+npm run build            # compila o servidor para os testes de integração
+npx playwright install chromium
+npm run test:integration # pedidos HTTP e interface, com Gemini simulada (sem chave real)
+npm run build:static     # verifica também o export usado pelo Android
 ```
 
 ## Estrutura

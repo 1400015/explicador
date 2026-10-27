@@ -1,9 +1,14 @@
 "use client";
 
 import { CapacitorHttp, type HttpResponse } from "@capacitor/core";
-import { MODEL, THINKING_LEVEL, buildSystemPrompt, type Subject } from "./prompt";
-import { MAX_HISTORY_MESSAGES, MAX_OUTPUT_TOKENS, type ChatImage, type ChatMessage } from "./shared";
-import { TutorError } from "./gemini-client";
+import {
+  MODEL,
+  THINKING_LEVEL,
+  buildSystemPrompt,
+  type Subject,
+} from "./prompt";
+import { MAX_OUTPUT_TOKENS, type ChatImage, type ChatMessage } from "./shared";
+import { TutorError } from "./tutor-error";
 
 /**
  * Chamada direta à Gemini via HTTP nativo do Capacitor (OkHttp no Android).
@@ -25,24 +30,9 @@ function isNative(): boolean {
   );
 }
 
-/**
- * Prepara o historico para enviar a API:
- * - so as ultimas MAX_HISTORY_MESSAGES mensagens;
- * - sem imagens antigas (fotos em base64 tornam o pedido enorme e podem
- *   provocar erro 413 ou timeout — so a mensagem atual leva fotos);
- * - comeca sempre por uma mensagem "user" (a API espera a conversa a
- *   comecar no utilizador; se a ultima resposta ficou por guardar, cortamos).
- */
-export function prepareHistory(history: ChatMessage[]): ChatMessage[] {
-  const textOnly = history
-    .filter((m) => (m.role === "user" || m.role === "model") && typeof m.text === "string")
-    .map((m) => ({ role: m.role, text: m.text }));
-  const trimmed = textOnly.slice(-MAX_HISTORY_MESSAGES);
-  if (trimmed.length > 0 && trimmed[0].role !== "user") {
-    trimmed.shift();
-  }
-  return trimmed;
-}
+import { prepareHistory } from "./history";
+export { prepareHistory } from "./history";
+import { moderate } from "./moderation";
 
 export function buildGeminiBody(params: {
   message: string;
@@ -78,9 +68,18 @@ export function buildGeminiBody(params: {
     safetySettings: [
       { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
       { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
-      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_LOW_AND_ABOVE" },
-      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" },
-      { category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "BLOCK_ONLY_HIGH" },
+      {
+        category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+        threshold: "BLOCK_LOW_AND_ABOVE",
+      },
+      {
+        category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+        threshold: "BLOCK_ONLY_HIGH",
+      },
+      {
+        category: "HARM_CATEGORY_CIVIC_INTEGRITY",
+        threshold: "BLOCK_ONLY_HIGH",
+      },
     ],
   };
 }
@@ -94,7 +93,11 @@ type GeminiResponse = {
   error?: { code?: number; status?: string; message?: string };
 };
 
-async function callGeminiRaw(apiKey: string, body: Record<string, unknown>): Promise<GeminiResponse> {
+async function callGeminiRaw(
+  apiKey: string,
+  body: Record<string, unknown>,
+  timeout = 120_000,
+): Promise<GeminiResponse> {
   const res: HttpResponse = await CapacitorHttp.request({
     url: ENDPOINT,
     method: "POST",
@@ -103,8 +106,8 @@ async function callGeminiRaw(apiKey: string, body: Record<string, unknown>): Pro
       "x-goog-api-key": apiKey,
     },
     data: body,
-    connectTimeout: 20_000,
-    readTimeout: 120_000,
+    connectTimeout: Math.min(20_000, timeout),
+    readTimeout: timeout,
     responseType: "json",
   });
 
@@ -120,7 +123,10 @@ async function callGeminiRaw(apiKey: string, body: Record<string, unknown>): Pro
  * Cria um erro com .status (HTTP) e .message = JSON do body, no mesmo formato
  * do ApiError do SDK — para o classificador (lib/api-error.ts) funcionar igual.
  */
-export function makeApiError(status: number, data: unknown): Error & { status: number } {
+export function makeApiError(
+  status: number,
+  data: unknown,
+): Error & { status: number } {
   const message = typeof data === "string" ? data : JSON.stringify(data);
   const err = new Error(message) as Error & { status: number };
   err.status = status;
@@ -133,13 +139,19 @@ export function makeApiError(status: number, data: unknown): Error & { status: n
  * não como HttpResponse — e o código vem dentro do texto da mensagem.
  * Convertemos para o formato { status, message: <json> } que o classificador entende.
  */
-export function normalizeNativeError(error: unknown): Error & { status?: number } {
-  if (error instanceof Error && typeof (error as { status?: number }).status === "number") {
+export function normalizeNativeError(
+  error: unknown,
+): Error & { status?: number } {
+  if (
+    error instanceof Error &&
+    typeof (error as { status?: number }).status === "number"
+  ) {
     return error as Error & { status: number };
   }
   const message = error instanceof Error ? error.message : String(error);
   // Procura "Response with status code 400" ou similar no texto
-  const match = message.match(/status code (\d{3})/i) ?? message.match(/\b(\d{3})\b/);
+  const match =
+    message.match(/status code (\d{3})/i) ?? message.match(/\b(\d{3})\b/);
   const status = match ? parseInt(match[1], 10) : undefined;
   const err = new Error(message) as Error & { status?: number };
   if (status !== undefined) err.status = status;
@@ -162,42 +174,35 @@ export async function generateWithNativeHttp(params: {
 
   if (json.promptFeedback?.blockReason) {
     throw new TutorError(
-      "A tua pergunta foi bloqueada pelos filtros de segurança. Tenta perguntar de outra forma, sobre as tuas matérias. 📚"
+      "A tua pergunta foi bloqueada pelos filtros de segurança. Tenta perguntar de outra forma, sobre as tuas matérias. 📚",
     );
   }
 
-  const text = json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+  const text =
+    json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ??
+    "";
   if (!text) return null;
   return text;
 }
 
-// Moderação: segunda chamada (thinking LOW, máx 16 tokens) para julgar adequação.
-export async function moderationCheckNativeHttp(apiKey: string, text: string): Promise<boolean> {
-  const prompt = `Avalia se o TEXTO abaixo é adequado para uma criança de 12 anos (sem violência, sexo, ódio, drogas ou instruções perigosas). Responde apenas com a palavra SIM ou NAO.
-
-TEXTO:
-"""
-${text.slice(0, 2000)}
-"""`;
-
-  const body: Record<string, unknown> = {
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: {
-      maxOutputTokens: 16,
-      thinkingConfig: { thinkingLevel: "LOW", includeThoughts: false },
-    },
-  };
-
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const json = await callGeminiRaw(apiKey, body);
-      const answer = json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
-      return answer.trim().toUpperCase().startsWith("SIM");
-    } catch {
-      if (attempt === 0) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
-    }
-  }
-  return true; // se a moderação falhar, deixam passar as outras camadas
+export async function moderationCheckNativeHttp(apiKey: string, text: string) {
+  return moderate(text, async (prompt) => {
+    const json = await callGeminiRaw(
+      apiKey,
+      {
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          maxOutputTokens: 32,
+          thinkingConfig: { thinkingLevel: "LOW", includeThoughts: false },
+        },
+      },
+      14_000,
+    );
+    return (
+      json.candidates?.[0]?.content?.parts
+        ?.filter((p) => !(p as { thought?: boolean }).thought)
+        .map((p) => p.text ?? "")
+        .join("") ?? ""
+    );
+  });
 }

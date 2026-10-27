@@ -29,6 +29,15 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Build (server)
+        run: npm run build
+
+      - name: Install browser for regression tests
+        run: npx playwright install --with-deps chromium
+
+      - name: HTTP and browser regressions (simulated Gemini)
+        run: npm run test:integration
+
       - name: Build (static export)
         run: npm run build:static
         env:

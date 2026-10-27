@@ -54,3 +54,7 @@ out/
 
 # assinaturas locais do apksigner (não publicar)
 *.idsig
+
+# Playwright
+/test-results/
+/playwright-report/
