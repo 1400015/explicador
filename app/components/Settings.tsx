@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { TutorError } from "@/lib/tutor-error";
+import { apiErrorDiagnostic, friendlyApiError } from "@/lib/api-error";
+import { version as appVersion } from "@/package.json";
 import {
   clearApiKey,
   loadSettings,
@@ -182,9 +185,18 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
       setStatus("Ligação OK! " + reply.slice(0, 80));
     } catch (error) {
       setStatus(
-        error instanceof Error
+        (error instanceof TutorError
           ? error.message
-          : "Não consegui testar a ligação.",
+          : friendlyApiError(error)) +
+          " Referência: " +
+          appVersion +
+          "/" +
+          (mode === "direct" ? "DIRECT" : "SERVER") +
+          "/" +
+          (error instanceof TutorError
+            ? (error.diagnostic ?? "REQUEST_CHECK")
+            : apiErrorDiagnostic(error)) +
+          ".",
       );
     } finally {
       setTesting(false);
@@ -556,7 +568,10 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
         </p>
       )}
       {status && (
-        <div className="mb-4 rounded-xl bg-indigo-50 px-3 py-2 text-sm text-indigo-800">
+        <div
+          role="status"
+          className="mb-4 break-words rounded-xl bg-indigo-50 px-3 py-2 text-sm text-indigo-800"
+        >
           {t(status)}
         </div>
       )}

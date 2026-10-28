@@ -1,7 +1,7 @@
 import type { Subject } from "./prompt";
 import type { ChatImage, ChatMessage } from "./shared";
 import { prepareHistory } from "./history";
-import { TutorError } from "./tutor-error";
+import { TutorError, ensureNotAborted } from "./tutor-error";
 import { learningProfile, type LearningProfile } from "./learning-profile";
 import { readPhotoContext, type PhotoContext } from "./photo-context";
 
@@ -100,7 +100,7 @@ export function createTutorTransport(
     });
     if (question.signal?.aborted) cancel();
     try {
-      controller.signal.throwIfAborted();
+      ensureNotAborted(controller.signal);
       const work = async () => {
         if (settings.mode === "direct") {
           if (!settings.apiKey.trim())
@@ -153,7 +153,7 @@ export function createTutorTransport(
           throw new TutorError(
             "O servidor não enviou uma resposta válida. Tenta novamente.",
           );
-        controller.signal.throwIfAborted();
+        ensureNotAborted(controller.signal);
         const context = readPhotoContext(data.photoContext);
         if (
           data.photoContext != null &&

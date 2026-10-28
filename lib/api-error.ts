@@ -35,6 +35,106 @@ function parseBody(raw: unknown): GeminiErrorBody | null {
   return null;
 }
 
+function errorFields(error: unknown) {
+  const value =
+    typeof error === "object" && error !== null
+      ? (error as { message?: unknown; name?: unknown; code?: unknown })
+      : null;
+  return {
+    message:
+      typeof value?.message === "string"
+        ? value.message
+        : typeof error === "string"
+          ? error
+          : "",
+    name: typeof value?.name === "string" ? value.name : "",
+    code: typeof value?.code === "string" ? value.code : "",
+  };
+}
+
+/** Categorias fixas: nunca apresentar mensagens nativas, URLs ou segredos. */
+function connectionFailure(error: unknown) {
+  const { message, name, code } = errorFields(error);
+  switch (code) {
+    case "UnknownHostException":
+      return "DNS";
+    case "SSLHandshakeException":
+    case "SSLPeerUnverifiedException":
+    case "SSLProtocolException":
+    case "SSLException":
+    case "CertificateException":
+    case "CertPathValidatorException":
+      return "TLS";
+    case "SocketTimeoutException":
+      return "TIMEOUT";
+    case "ConnectException":
+    case "SocketException":
+    case "NoRouteToHostException":
+    case "EOFException":
+      return "CONNECTION";
+  }
+  const detail = `${code} ${name} ${message}`;
+  if (
+    /UnknownHostException|unable to resolve host|ENOTFOUND|EAI_AGAIN|name or service not known/i.test(
+      detail,
+    )
+  )
+    return "DNS";
+  if (
+    /SSLHandshakeException|SSLPeerUnverifiedException|SSLProtocolException|SSLException|CertificateException|CertPathValidatorException|trust anchor|certificate verify failed/i.test(
+      detail,
+    )
+  )
+    return "TLS";
+  if (
+    /SocketTimeoutException|timeout|timed out|deadline|AbortError|ETIMEDOUT/i.test(
+      detail,
+    )
+  )
+    return "TIMEOUT";
+  if (
+    /ConnectException|NoRouteToHostException|SocketException|connection refused|failed to connect|socket hang up|ECONNRESET|ECONNREFUSED/i.test(
+      detail,
+    )
+  )
+    return "CONNECTION";
+  if (
+    /Failed to fetch|NetworkError|network request failed|network error|network down|Load failed/i.test(
+      detail,
+    )
+  )
+    return "NETWORK";
+  return null;
+}
+
+export function apiErrorDiagnostic(error: unknown): string {
+  const { message, name, code } = errorFields(error);
+  const value = error as {
+    status?: unknown;
+    error?: { code?: unknown };
+  } | null;
+  const rawStatus = value?.status ?? value?.error?.code;
+  if (
+    typeof rawStatus === "number" &&
+    Number.isInteger(rawStatus) &&
+    rawStatus >= 100 &&
+    rawStatus <= 599
+  )
+    return `HTTP_${rawStatus}`;
+  const connection = connectionFailure(error);
+  if (connection) return connection;
+  if (/^(UNIMPLEMENTED|UNAVAILABLE)$/.test(code)) return "PLUGIN_UNAVAILABLE";
+  if (/^(IllegalArgumentException|NullPointerException)$/.test(code))
+    return "NATIVE_ERROR";
+  if (name === "TypeError") return "JS_TYPE";
+  if (
+    /JSONException|SyntaxError/.test(`${code} ${name}`) ||
+    /invalid JSON|not valid JSON/i.test(message)
+  )
+    return "RESPONSE_INVALID";
+  return "UNKNOWN";
+}
+
 export function classifyApiError(error: unknown): ApiErrorKind {
   // Erro do SDK (@google/genai): ApiError tem .status (HTTP) e .message = JSON do body.
   // Também suportamos erros "planos" com .error.code por segurança.
@@ -45,7 +145,7 @@ export function classifyApiError(error: unknown): ApiErrorKind {
   } | null;
 
   const status: number | undefined = anyErr?.status ?? anyErr?.error?.code;
-  const message: string = anyErr?.message ?? "";
+  const message = errorFields(error).message;
   // Extrai o primeiro JSON da mensagem (o SDK mete o body inteiro no .message)
   const jsonStart = message.indexOf("{");
   const jsonEnd = message.lastIndexOf("}");
@@ -107,22 +207,8 @@ export function classifyApiError(error: unknown): ApiErrorKind {
     return "overloaded";
   }
 
-  // Sem status HTTP: timeout/rede -> "network", senao "unknown"
-  const errName = error instanceof Error ? error.name : "";
-  const looksLikeTimeout =
-    /timeout|timed out|deadline|aborterror|socket hang up|econnreset|econnrefused|etimedout/i.test(
-      `${errName} ${message}`,
-    );
-  if (
-    error instanceof TypeError ||
-    looksLikeTimeout ||
-    message.includes("Failed to fetch") ||
-    message.includes("NetworkError") ||
-    message.includes("network") ||
-    message.includes("fetch")
-  ) {
-    return "network";
-  }
+  // Um TypeError de processamento não prova falta de internet.
+  if (connectionFailure(error)) return "network";
   return "unknown";
 }
 
@@ -144,9 +230,22 @@ const MESSAGES: Record<ApiErrorKind, string> = {
   network:
     "Não consegui ligar à internet (ou a ligação foi abaixo). Confere o Wi-Fi/dados móveis e tenta de novo. 📶",
   unknown:
-    "Tive um probleminha para responder. Tenta de novo daqui a pouco. 🤏",
+    "Não consegui concluir o pedido à IA. Nas Definições, usa o botão de teste da ligação para obter a referência do erro.",
 };
 
 export function friendlyApiError(error: unknown): string {
-  return MESSAGES[classifyApiError(error)];
+  const kind = classifyApiError(error);
+  if (kind === "network") {
+    switch (connectionFailure(error)) {
+      case "DNS":
+        return "Não consegui encontrar o endereço do serviço de IA (DNS). Experimenta alternar entre Wi-Fi e dados móveis e tenta novamente.";
+      case "TLS":
+        return "Não consegui estabelecer uma ligação segura ao serviço de IA (TLS). Confirma a data e hora automáticas do telemóvel e experimenta outra rede.";
+      case "TIMEOUT":
+        return "A ligação ao serviço de IA demorou demasiado. Tenta novamente ou experimenta outra rede.";
+      case "CONNECTION":
+        return "Não consegui estabelecer a ligação ao serviço de IA. Experimenta alternar entre Wi-Fi e dados móveis.";
+    }
+  }
+  return MESSAGES[kind];
 }

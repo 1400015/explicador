@@ -428,8 +428,9 @@ export default function Chat() {
           : "Não consegui falar com o tutor. Verifica a ligação e tenta de novo.",
       );
       if (
-        !(err instanceof TutorError) ||
-        err.kind === "network" ||
+        (err instanceof TutorError &&
+          err.kind === "network" &&
+          (err.diagnostic === "NETWORK" || err.diagnostic === "DNS")) ||
         !navigator.onLine
       )
         setOfflineTipsOpen(true);
