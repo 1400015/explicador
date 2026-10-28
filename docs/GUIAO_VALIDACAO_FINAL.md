@@ -1,4 +1,4 @@
-# Guião de validação final — Tutor IA 1.3.0
+# Guião de validação final — Tutor IA 1.3.1
 
 Usar um dispositivo ou perfil Android de teste. Registar o modelo, a versão do
 Android, o commit, a versão da app e o resultado de cada cenário. Os registos não
@@ -52,6 +52,10 @@ este passo avalia o comportamento do modelo real e a qualidade das respostas.
    sem crash. Testar ditado e leitura quando suportados pelo dispositivo.
 3. Escrever com o teclado aberto, rodar o ecrã e regressar à app após a suspender.
    Confirmar que os controlos continuam acessíveis e que o histórico não duplica.
+   No campo da pergunta, confirmar sugestões e a correção de uma palavra que o
+   teclado corrija habitualmente noutras apps. Confirmar escrita com acentos e
+   correção por toque numa sugestão. Na chave API e no PIN, confirmar que não há
+   correção automática dos caracteres introduzidos.
 4. Enviar e limpar a conversa durante o pedido. A resposta antiga não deve reaparecer.
 5. Criar conversas em disciplinas diferentes, fechar a app e reiniciar o dispositivo.
    Confirmar recuperação e eliminação persistente das conversas de teste.

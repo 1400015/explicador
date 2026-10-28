@@ -815,7 +815,7 @@ export default function Chat() {
               placeholder={t("Escreve a tua dúvida aqui...")}
               maxLength={1000}
               disabled={loading}
-              // Teclado com correção automática e sugestões de palavras (pt-BR)
+              // Pedir sugestões/correção ao teclado na variante do perfil.
               autoComplete="on"
               autoCorrect="on"
               autoCapitalize="sentences"

@@ -1,10 +1,11 @@
-# Estado da evolução — Tutor IA 1.3.0
+# Estado da evolução — Tutor IA 1.3.1
 
 Esta branch acrescenta perfil de idioma/ensino e contexto persistente das últimas
 fotografias sobre a estabilização da 1.2.0 do PR #11. A versão não foi publicada.
 
 - [Funcionamento e configuração](README.md)
 - [Notas 1.3.0 e limites da implementação](docs/RELEASE_NOTES_1.3.0.md)
+- [Correção do teclado em 1.3.1](docs/RELEASE_NOTES_1.3.1.md)
 - [Distribuição Android](docs/DISTRIBUICAO.md)
 - [Validação final em dispositivo](docs/GUIAO_VALIDACAO_FINAL.md)
 - [Evidências anteriores da estabilização 1.2.0](docs/VALIDACAO_1.2.0.md)

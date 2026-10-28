@@ -4,7 +4,7 @@ Tutor de estudos para alunos de cerca de 12 anos, com perguntas guiadas, fotogra
 ditado, leitura e verificação local de cálculos. Next.js + TypeScript para web/PWA
 e Capacitor para Android.
 
-Esta branch prepara a versão **1.3.0**, sobre a estabilização da 1.2.0. Os APKs antigos da raiz são da versão 1.1.5.
+Esta branch prepara a versão **1.3.1**, sobre a estabilização da 1.2.0. Os APKs antigos da raiz são da versão 1.1.5.
 Novos artefactos são produzidos pelo build e pelo workflow de release.
 
 ## Desenvolvimento
@@ -94,6 +94,8 @@ a memória das fotografias. Pedidos de clientes anteriores continuam compatívei
 com o contexto pedagógico antigo. Nenhum campo permite escolher modelo ou endpoint.
 
 Ver [notas 1.3.0](docs/RELEASE_NOTES_1.3.0.md).
+O patch [1.3.1](docs/RELEASE_NOTES_1.3.1.md) restaura a integração com o teclado
+Android para sugestões e correção automática.
 
 ## Configuração
 
