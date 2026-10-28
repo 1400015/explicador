@@ -44,8 +44,19 @@ function repository() {
     write: async (value) => {
       if (isNativeApp()) {
         await SecureSettings.writeState({ key: "settings", value });
-        await SecureSettings.removeLegacy();
       } else localStorage.setItem(SETTINGS_KEY, value);
+    },
+    // O segredo legado pode coexistir com metadados novos após uma falha do cofre.
+    // Atualizar PIN/perfil não deve apagar essa única cópia recuperável.
+    readLegacyKey: async () => {
+      if (!isNativeApp()) return null;
+      const raw = (await Preferences.get({ key: SETTINGS_KEY })).value;
+      if (raw === null) return null;
+      const legacy = JSON.parse(raw) as { apiKey?: unknown } | null;
+      return typeof legacy?.apiKey === "string" ? legacy.apiKey : null;
+    },
+    finishMigration: async () => {
+      if (isNativeApp()) await SecureSettings.removeLegacy();
     },
     getKey: async (persistent) =>
       isNativeApp()
