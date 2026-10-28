@@ -1,0 +1,97 @@
+# Guião de validação final — Tutor IA 1.2.0
+
+Usar um dispositivo ou perfil Android de teste. Registar o modelo, a versão do
+Android, o commit, a versão da app e o resultado de cada cenário. Os registos não
+devem incluir a chave API, palavras-passe, PIN nem conteúdo pessoal das conversas.
+
+O APK debug permite testar uma instalação nova. Para atualizar a app release
+existente é necessário um APK assinado com a keystore original. Não desinstalar
+a app em utilização para contornar a diferença de assinatura: isso apaga dados.
+
+## 1. Instalação nova e ligação real
+
+1. Instalar o APK no perfil de teste e abrir sem configurar uma chave. A interface
+   deve abrir e explicar como configurar a ligação.
+2. Nas Definições, escolher Esta app, introduzir uma chave Gemini válida e testar
+   a ligação. Enviar depois uma pergunta escolar no chat, com e sem fotografia.
+3. Escolher Servidor e indicar um backend HTTPS com a chave no ambiente desse
+   servidor. Testar a ligação e repetir a pergunta no chat.
+4. Confirmar erros claros para chave inválida, servidor indisponível e falta de
+   rede. A app não deve mudar de modo e deve conservar pergunta e anexos.
+5. Se for usado um backend local HTTP, confirmar que exige a opção explícita e
+   um endereço local. Um endereço público HTTP deve ser rejeitado.
+
+Resultado esperado: Testar ligação e chat usam o mesmo destino em cada modo.
+
+## 2. Geração e moderação
+
+1. Testar Matemática, Ciências e Português com exercícios adequados ao aluno.
+   Confirmar dicas compreensíveis, perguntas orientadoras e adaptação depois de
+   escolher Não entendi.
+2. Perguntar sobre proporções numa receita de bolo: não deve haver bloqueio
+   genérico da palavra receita.
+3. Testar pedidos fora do âmbito e uma tentativa de desviar as instruções do
+   tutor. Confirmar uma resposta segura e o regresso aos estudos.
+4. Num cenário de teste com sinal de perigo, confirmar que o apoio continua
+   visível depois da resposta e que pode ser dispensado e reativado.
+
+Registar apenas o identificador do exercício e se o resultado foi adequado. Os
+testes automáticos com respostas simuladas já cobrem indisponibilidade do moderador;
+este passo avalia o comportamento do modelo real e a qualidade das respostas.
+
+## 3. Câmara, voz e ciclo de vida
+
+1. Fotografar e selecionar uma imagem da galeria. Enviar enquanto a imagem ainda
+   está a ser processada; a pergunta e o anexo devem ser conservados.
+2. Autorizar e recusar separadamente câmara e microfone. A recusa deve ser tratada
+   sem crash. Testar ditado e leitura quando suportados pelo dispositivo.
+3. Escrever com o teclado aberto, rodar o ecrã e regressar à app após a suspender.
+   Confirmar que os controlos continuam acessíveis e que o histórico não duplica.
+4. Enviar e limpar a conversa durante o pedido. A resposta antiga não deve reaparecer.
+5. Criar conversas em disciplinas diferentes, fechar a app e reiniciar o dispositivo.
+   Confirmar recuperação e eliminação persistente das conversas de teste.
+
+## 4. Atualização da versão 1.1.5 e segurança
+
+Este cenário exige a assinatura original e uma instalação antiga no perfil de teste.
+
+1. Na versão antiga, guardar uma chave válida, configurar um PIN e criar conversas
+   de teste. Fechar e reabrir para confirmar o estado inicial.
+2. Instalar a versão 1.2.0 assinada por cima, sem desinstalar nem limpar os dados.
+3. Confirmar conversas, disciplina ativa, PIN e funcionamento da chave no modo
+   Esta app. Fechar, reiniciar o dispositivo e voltar a confirmar.
+4. Errar o PIN três vezes, fechar e reabrir as Definições: o atraso não deve ser
+   eliminado. Confirmar depois o desbloqueio com o PIN correto e a sua alteração.
+5. Apagar a chave durante um pedido: a resposta pendente deve ser interrompida,
+   a pergunta conservada e o modo alterado para Servidor. Reabrir e confirmar que
+   o modo Esta app exige configurar novamente a chave.
+6. Num perfil de teste separado, confirmar que uma reinstalação não recupera
+   automaticamente chave, PIN ou conversas por backup.
+
+Os testes instrumentados complementam estes passos com verificações do texto
+cifrado, IV aleatório, recriação do cofre, remoção e rejeição de adulteração.
+
+## 5. PWA instalada
+
+1. Instalar a PWA num browser suportado, abrir online e aguardar a instalação
+   completa. Criar uma conversa e fechar a aplicação.
+2. Ativar modo de avião e voltar a abrir. Histórico, cálculo e dicas locais devem
+   continuar interativos. A geração remota deve explicar a falta de ligação e
+   conservar a pergunta e as fotografias para repetir.
+3. Voltar a ligar a rede e repetir o envio sem duplicar mensagens.
+4. Disponibilizar um segundo build na mesma origem de teste. Confirmar atualização
+   explícita, conservação do rascunho e das conversas, bloqueio com fotografias ou
+   pedido pendente e indicação para fechar outras janelas.
+
+## Registo de execução
+
+| Cenário | Dispositivo / browser | Commit | Resultado / ocorrência |
+| --- | --- | --- | --- |
+| Instalação e dois modos reais | A preencher | A preencher | Pendente |
+| Qualidade pedagógica e moderação reais | A preencher | A preencher | Pendente |
+| Câmara, voz, teclado e ciclo de vida | A preencher | A preencher | Pendente |
+| Atualização assinada, migração e PIN | A preencher | A preencher | Pendente |
+| PWA instalada, offline e atualização | A preencher | A preencher | Pendente |
+
+Os resultados acima só são preenchidos depois da execução. Para assinatura,
+credenciais de CI e preparação de release, ver [distribuição](DISTRIBUICAO.md).

@@ -56,6 +56,10 @@ código. Esse artefacto não é distribuível como atualização.
 
 ## Validar antes de distribuir
 
+Seguir o [guião de validação final](GUIAO_VALIDACAO_FINAL.md) e registar dispositivo,
+commit e resultado de cada cenário. O guião inclui a migração da versão 1.1.5 e a
+PWA instalada; não considera os testes reais executados antes de haver evidências.
+
 1. Lógica, lint, TypeScript, servidor, HTTP/browser/PWA e export estático.
 2. Android: câmara, microfone, leitura, teclado, suspensão e retoma.
 3. Chave real: geração, moderação, acesso ao modelo e qualidade das dicas.

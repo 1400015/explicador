@@ -17,5 +17,6 @@ com identidade diferente.
 Os APKs da raiz são da versão 1.1.5. A versão 1.2.0 foi compilada localmente em
 debug e release sem assinatura; o APK debug teve identidade, versão e assinatura
 verificadas. Os resultados e as validações ainda pendentes constam do relatório.
+O CI web e Android passou, incluindo quatro testes instrumentados no emulador.
 Atualizar a instalação distribuída requer a keystore original. Publicação final
 depende de Gemini real e Android. As notas anteriores continuam no histórico Git.
