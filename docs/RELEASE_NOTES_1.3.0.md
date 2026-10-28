@@ -15,6 +15,8 @@ certificado de release preservados. A versão não foi publicada.
   Os contactos de apoio seguem o país. Vozes dependem do dispositivo.
 - Perfil guardado junto das definições protegidas pelo PIN. Configurações anteriores
   conservam chave/PIN e adotam o perfil inicial pt-PT, Portugal, 7.º ano.
+- No Android, uma falha de migração do cofre conserva a chave legada mesmo depois
+  de atualizar PIN/perfil. A limpeza só ocorre após confirmação ou eliminação explícita.
 
 ## Contexto das fotografias
 
