@@ -12,7 +12,8 @@ const config: CapacitorConfig = {
     // cleartext (HTTP) só é necessário se o utilizador ligar a app a um
     // servidor local na rede Wi-Fi (modo "Servidor" nas Definições).
     allowMixedContent: false,
-    captureInput: true,
+    // Usar o InputConnection normal do WebView para composição, sugestões e correção.
+    captureInput: false,
     webContentsDebuggingEnabled: false,
   },
   plugins: {
