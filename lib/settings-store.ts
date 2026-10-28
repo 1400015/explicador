@@ -1,5 +1,10 @@
 import type { PinHash } from "./pin";
 import { GEMINI_KEY_PATTERN } from "./safety";
+import {
+  DEFAULT_PROFILE,
+  learningProfile,
+  type LearningProfile,
+} from "./learning-profile";
 
 export type AppSettings = {
   mode: "server" | "direct";
@@ -9,6 +14,7 @@ export type AppSettings = {
   allowLocalHttp?: boolean;
   persistApiKey?: boolean;
   apiKeyIssue?: string;
+  profile?: LearningProfile;
 };
 export const DEFAULT_SETTINGS: AppSettings = {
   mode: "server",
@@ -17,6 +23,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pin: null,
   allowLocalHttp: false,
   persistApiKey: false,
+  profile: DEFAULT_PROFILE,
 };
 export interface SettingsStorage {
   native: boolean;
@@ -55,6 +62,7 @@ function decode(raw: string | null): AppSettings {
     apiKey: typeof value.apiKey === "string" ? value.apiKey : "",
     serverUrl: typeof value.serverUrl === "string" ? value.serverUrl : "",
     pin: value.pin ?? null,
+    profile: learningProfile(value.profile),
     allowLocalHttp: value.allowLocalHttp === true,
     persistApiKey:
       value.persistApiKey === true ||
@@ -69,6 +77,7 @@ function metadata(settings: AppSettings) {
     pin: settings.pin,
     allowLocalHttp: settings.allowLocalHttp === true,
     persistApiKey: settings.persistApiKey === true,
+    profile: learningProfile(settings.profile),
   });
 }
 

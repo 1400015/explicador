@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Tutor IA — Estudos com IA",
   description:
-    "Um tutor de IA paciente e encorajador para ajudar nos estudos do ensino fundamental.",
+    "Um tutor de IA paciente e encorajador, com apoio adaptado ao idioma e ao ano escolar.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
@@ -35,7 +35,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-PT">
       <body className="antialiased">{children}</body>
     </html>
   );

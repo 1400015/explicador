@@ -14,9 +14,12 @@ const metadata = execFileSync(
   { encoding: "utf8" },
 );
 const version = JSON.parse(await readFile("package.json", "utf8")).version;
+const gradle = await readFile("android/app/build.gradle", "utf8");
+const versionCode = gradle.match(/versionCode\s+(\d+)/)?.[1];
+if (!versionCode) throw new Error("versionCode Android não encontrado.");
 if (
   !metadata.includes("name='com.tutoria.estudos'") ||
-  !metadata.includes("versionCode='8'") ||
+  !metadata.includes("versionCode='" + versionCode + "'") ||
   !metadata.includes("versionName='" + version + "'")
 )
   throw new Error("Identidade ou versão do APK incorreta.");

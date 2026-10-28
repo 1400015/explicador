@@ -1,4 +1,5 @@
 import type { Subject } from "./prompt";
+import type { TutorLocale } from "./learning-profile";
 
 /**
  * Dicas offline: orientação pedagógica genérica por matéria, disponível
@@ -51,7 +52,55 @@ const OFFLINE_TIPS: Record<Subject, string[]> = {
   ],
 };
 
-export function getOfflineTips(subject: Subject): string[] {
+const BR_TIPS: Record<Subject, string[]> = {
+  matematica: [
+    "Leia o enunciado duas vezes e destaque o que a pergunta pede.",
+    "Anote os números e as unidades antes de calcular.",
+    "Experimente primeiro um exemplo com números menores.",
+    "Confira a resposta usando a operação inversa.",
+    "Faça um desenho para representar o problema.",
+  ],
+  ciencias: [
+    "Separe a pergunta em partes: o que acontece e por quê?",
+    "Pense em causa e efeito: o que muda primeiro?",
+    "Relacione com plantas, culinária ou o clima.",
+    "Faça um esquema com setas ligando os elementos.",
+    "Revise o glossário e os conceitos da aula.",
+  ],
+  portugues: [
+    "Identifique se é interpretação, gramática ou produção de texto.",
+    "Volte ao texto e destaque a frase que apoia sua resposta.",
+    "Na gramática, analise um aspecto de cada vez.",
+    "Faça um rascunho com começo, meio e fim.",
+    "Leia sua resposta em voz alta para conferir.",
+  ],
+  historia: [
+    "Localize o acontecimento no tempo e no espaço.",
+    "Pergunte: quem, o quê, quando, onde e por quê?",
+    "Relacione o tema com algo que você já estudou.",
+    "Separe as causas das consequências.",
+    "Faça uma linha do tempo com os fatos principais.",
+  ],
+  geografia: [
+    "Localize o lugar no mapa.",
+    "Relacione clima, vegetação, população e atividades econômicas.",
+    "Consulte a legenda do mapa.",
+    "Compare com o lugar onde você vive.",
+    "Diferencie descrever características de explicar causas.",
+  ],
+  geral: [
+    "Reescreva a pergunta com suas palavras.",
+    "Divida o exercício em etapas pequenas.",
+    "Procure um exemplo no caderno ou no livro.",
+    "Se travar, avance e volte ao exercício depois.",
+    "Peça uma dica a um colega ou professor.",
+  ],
+};
+export function getOfflineTips(
+  subject: Subject,
+  locale: TutorLocale = "pt-PT",
+): string[] {
+  if (locale === "pt-BR") return BR_TIPS[subject] ?? BR_TIPS.geral;
   return OFFLINE_TIPS[subject] ?? OFFLINE_TIPS.geral;
 }
 

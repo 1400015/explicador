@@ -1,8 +1,8 @@
 {
   "name": "Tutor IA — Estudos com IA",
   "short_name": "Tutor IA",
-  "description": "Tutor de estudos com IA para estudantes: explica, guía com perguntas e aceita fotos dos exercícios.",
-  "lang": "pt-BR",
+  "description": "Tutor de estudos com IA: explica, guia com perguntas e aceita fotografias dos exercícios.",
+  "lang": "pt-PT",
   "dir": "ltr",
   "start_url": "/",
   "scope": "/",

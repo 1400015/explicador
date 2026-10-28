@@ -5,9 +5,7 @@
  */
 
 export type CalcCheck =
-  | { kind: "not-calc" }
-  | { kind: "ok" }
-  | { kind: "wrong"; expected: number };
+  { kind: "not-calc" } | { kind: "ok" } | { kind: "wrong"; expected: number };
 
 const OPERATORS = ["+", "-", "*", "/", "(", ")", "."];
 
@@ -96,7 +94,8 @@ function evaluate(tokens: string[]): number | null {
   }
 
   const result = parseExpression();
-  if (result === null || pos !== tokens.length || !isFinite(result)) return null;
+  if (result === null || pos !== tokens.length || !isFinite(result))
+    return null;
   return Math.round(result * 1e9) / 1e9;
 }
 
@@ -117,8 +116,15 @@ export function checkCalculation(message: string): CalcCheck {
 }
 
 /** Mensagens de resposta (sem revelar o resultado certo quando está errado). */
-export function calcFeedback(check: CalcCheck): string | null {
+export function calcFeedback(
+  check: CalcCheck,
+  locale: "pt-PT" | "pt-BR" = "pt-PT",
+): string | null {
   if (check.kind === "not-calc") return null;
+  if (locale === "pt-BR")
+    return check.kind === "ok"
+      ? "✅ Conta certa! Você conferiu seu cálculo — assim se estuda matemática!"
+      : "❌ O resultado não bateu. Confira as etapas: primeiro multiplicações e divisões, depois somas e subtrações. Tente novamente!";
   if (check.kind === "ok") {
     return "✅ Conta certa! Confirmaste o teu cálculo — assim se estuda matemática!";
   }

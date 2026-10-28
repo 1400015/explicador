@@ -2,6 +2,8 @@
 
 import { SUBJECT_LABELS } from "@/lib/prompt";
 import type { Subject } from "@/lib/prompt";
+import { useLocale } from "@/lib/locale";
+import type { TutorLocale } from "@/lib/learning-profile";
 import {
   useConversations,
   deleteConversation,
@@ -17,9 +19,9 @@ const SUBJECT_ICONS: Record<Subject, string> = {
   geral: "💡",
 };
 
-function formatTime(ts: number): string {
+function formatTime(ts: number, locale: TutorLocale): string {
   try {
-    return new Date(ts).toLocaleString("pt-BR", {
+    return new Date(ts).toLocaleString(locale, {
       day: "2-digit",
       month: "2-digit",
       hour: "2-digit",
@@ -38,6 +40,7 @@ export default function ConversationList({
   /** Chamado quando uma conversa é apagada, para o chat sincronizar. */
   onDeleted: (id: string) => void;
 }) {
+  const { locale, t } = useLocale();
   const { conversations, ready } = useConversations();
   async function handleDelete(id: string) {
     await deleteConversation(id);
@@ -48,7 +51,7 @@ export default function ConversationList({
   if (conversations.length === 0) {
     return (
       <p className="mt-6 text-center text-sm text-indigo-700">
-        Ainda não tens conversas guardadas. Manda a primeira pergunta! 💡
+        {t("Ainda não tens conversas guardadas. Envia a primeira pergunta! 💡")}
       </p>
     );
   }
@@ -56,7 +59,7 @@ export default function ConversationList({
   return (
     <div className="mt-6 space-y-2">
       <h2 className="text-sm font-semibold text-indigo-800">
-        Conversas recentes
+        {t("Conversas recentes")}
       </h2>
       {conversations.map((c) => (
         <div
@@ -66,7 +69,7 @@ export default function ConversationList({
           <button
             onClick={() => onOpen(c)}
             className="min-w-0 flex-1 text-left"
-            title="Abrir conversa"
+            title={t("Abrir conversa")}
           >
             <span className="text-sm font-medium text-indigo-900">
               {SUBJECT_ICONS[c.subject] ?? "💡"}{" "}
@@ -76,13 +79,13 @@ export default function ConversationList({
               {c.messages[c.messages.length - 1]?.text ?? "(sem mensagens)"}
             </span>
             <span className="text-[10px] text-gray-400">
-              {formatTime(c.updatedAt)}
+              {formatTime(c.updatedAt, locale)}
             </span>
           </button>
           <button
             onClick={() => handleDelete(c.id)}
-            aria-label="Apagar conversa"
-            title="Apagar conversa"
+            aria-label={t("Apagar conversa")}
+            title={t("Apagar conversa")}
             className="rounded-full bg-red-50 px-2 py-1 text-xs text-red-500 transition hover:bg-red-100"
           >
             🗑️

@@ -9,6 +9,12 @@ import {
 } from "./prompt";
 import { MAX_OUTPUT_TOKENS, type ChatImage, type ChatMessage } from "./shared";
 import { TutorError } from "./tutor-error";
+import type { LearningProfile } from "./learning-profile";
+import {
+  photoContextPart,
+  photoGenerationConfig,
+  type PhotoContext,
+} from "./photo-context";
 
 /**
  * Chamada direta à Gemini via HTTP nativo do Capacitor (OkHttp no Android).
@@ -39,6 +45,9 @@ export function buildGeminiBody(params: {
   history: ChatMessage[];
   subject: Subject;
   images: ChatImage[];
+  profile?: LearningProfile;
+  photoContext?: PhotoContext;
+  rememberPhotos?: boolean;
 }): Record<string, unknown> {
   const { message, history, subject, images } = params;
 
@@ -50,6 +59,7 @@ export function buildGeminiBody(params: {
     {
       role: "user",
       parts: [
+        ...photoContextPart(params.photoContext),
         { text: message },
         ...images.map((img) => ({
           inlineData: { mimeType: img.mimeType, data: img.data },
@@ -60,9 +70,20 @@ export function buildGeminiBody(params: {
 
   return {
     contents,
-    systemInstruction: { parts: [{ text: buildSystemPrompt(subject) }] },
+    systemInstruction: {
+      parts: [
+        {
+          text: buildSystemPrompt(
+            subject,
+            params.profile,
+            params.rememberPhotos && images.length > 0,
+          ),
+        },
+      ],
+    },
     generationConfig: {
       maxOutputTokens: MAX_OUTPUT_TOKENS,
+      ...photoGenerationConfig(params.rememberPhotos ? images.length : 0),
       thinkingConfig: { thinkingLevel: THINKING_LEVEL, includeThoughts: false },
     },
     safetySettings: [
@@ -169,6 +190,9 @@ export async function generateWithNativeHttp(params: {
   history: ChatMessage[];
   subject: Subject;
   images: ChatImage[];
+  profile?: LearningProfile;
+  photoContext?: PhotoContext;
+  rememberPhotos?: boolean;
 }): Promise<string | null> {
   const body = buildGeminiBody(params);
   const json = await callGeminiRaw(params.apiKey, body);
@@ -186,24 +210,33 @@ export async function generateWithNativeHttp(params: {
   return text;
 }
 
-export async function moderationCheckNativeHttp(apiKey: string, text: string) {
-  return moderate(text, async (prompt) => {
-    const json = await callGeminiRaw(
-      apiKey,
-      {
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-          maxOutputTokens: 32,
-          thinkingConfig: { thinkingLevel: "LOW", includeThoughts: false },
+export async function moderationCheckNativeHttp(
+  apiKey: string,
+  text: string,
+  studentAge = 12,
+) {
+  return moderate(
+    text,
+    async (prompt) => {
+      const json = await callGeminiRaw(
+        apiKey,
+        {
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: {
+            maxOutputTokens: 32,
+            thinkingConfig: { thinkingLevel: "LOW", includeThoughts: false },
+          },
         },
-      },
-      14_000,
-    );
-    return (
-      json.candidates?.[0]?.content?.parts
-        ?.filter((p) => !(p as { thought?: boolean }).thought)
-        .map((p) => p.text ?? "")
-        .join("") ?? ""
-    );
-  });
+        14_000,
+      );
+      return (
+        json.candidates?.[0]?.content?.parts
+          ?.filter((p) => !(p as { thought?: boolean }).thought)
+          .map((p) => p.text ?? "")
+          .join("") ?? ""
+      );
+    },
+    15_000,
+    studentAge,
+  );
 }

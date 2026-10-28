@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { type Subject, SUBJECT_LABELS } from "@/lib/prompt";
+import { learningProfile, profileDescription } from "@/lib/learning-profile";
+import { LocaleContext, copyFor } from "@/lib/locale";
+import type { PhotoContext } from "@/lib/photo-context";
 import { TutorError } from "@/lib/tutor-error";
 import { askTutor as requestTutor } from "@/lib/tutor-transport";
 import { processImageFiles } from "@/lib/images";
@@ -17,6 +20,7 @@ import {
   reloadSettings,
   SETTINGS_KEY,
   type AppSettings,
+  DEFAULT_SETTINGS,
 } from "@/lib/settings";
 import {
   conversationStore,
@@ -62,6 +66,14 @@ const GREETINGS: Record<Subject, string> = {
   geral:
     "Oi! Estou aqui para te ajudar em qualquer matéria. O que vamos estudar? 💡",
 };
+const GREETINGS_PT: Record<Subject, string> = {
+  matematica: "Olá! Vamos perceber a matemática, um passo de cada vez? ➗",
+  ciencias: "Olá! Que pergunta de Ciências vamos explorar hoje? 🔬",
+  portugues: "Olá! Diz-me o que queres estudar em Português. 📖",
+  historia: "Olá! Que tema de História vamos descobrir hoje? 🏛️",
+  geografia: "Olá! Vamos explorar o mundo? Qual é a tua dúvida? 🌎",
+  geral: "Olá! Estou aqui para te ajudar nos estudos. Por onde começamos? 💡",
+};
 const noSubscription = () => () => {};
 const noSpeechOnServer = () => false;
 
@@ -81,12 +93,12 @@ export default function Chat() {
   }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [settings, setSettings] = useState<AppSettings>({
-    mode: "server",
-    apiKey: "",
-    serverUrl: "",
-    pin: null,
-  });
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const profile = learningProfile(settings.profile);
+  const t = copyFor(profile.locale);
+  useEffect(() => {
+    document.documentElement.lang = profile.locale;
+  }, [profile.locale]);
   const [settingsReady, setSettingsReady] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -266,7 +278,7 @@ export default function Chat() {
     setError(null);
     setListening(true);
     try {
-      const text = await listenOnce();
+      const text = await listenOnce(profile.locale);
       if (generation === mediaGeneration.current)
         setInput((prev) => (prev ? prev + " " + text : text).slice(0, 1000));
     } catch (err) {
@@ -283,7 +295,7 @@ export default function Chat() {
       return;
     }
     setSpeakingMessageIndex(index);
-    speak(text, () => setSpeakingMessageIndex(null));
+    speak(text, () => setSpeakingMessageIndex(null), profile.locale);
   }
   async function handleTakePhoto() {
     if (
@@ -335,6 +347,7 @@ export default function Chat() {
     images: ChatImage[],
     history: ChatMessage[],
     signal: AbortSignal,
+    onPhotoContext?: (context: PhotoContext) => void,
   ): Promise<string> {
     return requestTutor(settings, {
       message: text,
@@ -342,6 +355,8 @@ export default function Chat() {
       history,
       subject,
       signal,
+      photoContext: active?.photoContext,
+      onPhotoContext,
     });
   }
 
@@ -351,7 +366,9 @@ export default function Chat() {
     const text =
       input.trim() ||
       (pendingImages.length
-        ? "Olha essa foto do meu trabalho, pode me ajudar?"
+        ? profile.locale === "pt-PT"
+          ? "Podes ajudar-me com o exercício desta fotografia?"
+          : "Pode me ajudar com o exercício desta fotografia?"
         : "");
     if (!text || loading || processing || listening || !stored.ready) return;
     requestConversation.current = null;
@@ -379,14 +396,25 @@ export default function Chat() {
         conversationStore.getSnapshot().activeId === id;
       const feedback = images.length
         ? null
-        : calcFeedback(checkCalculation(text));
+        : calcFeedback(checkCalculation(text), profile.locale);
+      let nextPhotoContext: PhotoContext | null | undefined = images.length
+        ? null
+        : undefined;
       const reply =
-        feedback ?? (await askTutor(text, images, history, request.signal));
+        feedback ??
+        (await askTutor(text, images, history, request.signal, (context) => {
+          nextPhotoContext = context;
+        }));
       if (!current()) return;
-      await conversationStore.append(id, [
-        { role: "user", text, images },
-        { role: "model", text: reply },
-      ]);
+      await conversationStore.append(
+        id,
+        [
+          { role: "user", text, images },
+          { role: "model", text: reply },
+        ],
+        false,
+        nextPhotoContext,
+      );
       if (!current()) return;
       void recordQuestion(subject);
       pendingImages.forEach(releaseImage);
@@ -428,9 +456,13 @@ export default function Chat() {
         .reverse()
         .find((m) => m.role === "user");
       const text =
-        'Não entendi a tua última resposta sobre "' +
+        (profile.locale === "pt-PT"
+          ? 'Não entendi a tua última resposta sobre "'
+          : 'Não entendi sua última resposta sobre "') +
         (question?.text ?? "a tua última explicação").slice(0, 200) +
-        '". Podes explicar de um jeito mais simples, com um exemplo do dia a dia e passos mais curtos?';
+        (profile.locale === "pt-PT"
+          ? '". Podes explicar de uma forma mais simples, com um exemplo do dia a dia e passos mais curtos?'
+          : '". Pode explicar de um jeito mais simples, com um exemplo do dia a dia e etapas menores?');
       const reply = await askTutor(text, [], messages, request.signal);
       if (
         guard.current.isCurrent(request) &&
@@ -479,328 +511,367 @@ export default function Chat() {
   }
 
   return (
-    <div className="flex h-[100dvh] min-w-0 flex-col bg-gradient-to-b from-sky-100 to-indigo-100">
-      <ServiceWorkerRegister />
-      <header className="border-b border-indigo-100 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-2xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">🎓</span>
-            <h1 className="text-lg font-bold text-indigo-900">Tutor IA</h1>
-            {settings.mode === "direct" && (
-              <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                modo app
+    <LocaleContext.Provider value={profile.locale}>
+      <div className="flex h-[100dvh] min-w-0 flex-col bg-gradient-to-b from-sky-100 to-indigo-100">
+        <ServiceWorkerRegister />
+        <header className="border-b border-indigo-100 bg-white/80 backdrop-blur">
+          <div className="mx-auto flex max-w-2xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="text-2xl">🎓</span>
+              <h1 className="text-lg font-bold text-indigo-900">
+                {t("Tutor IA")}
+              </h1>
+              <span className="w-full break-words text-xs text-indigo-700">
+                {profileDescription(profile)}
               </span>
-            )}
-          </div>
-          <button
-            ref={settingsButtonRef}
-            disabled={!settingsReady}
-            aria-label="Definições (pais)"
-            onClick={() => setSettingsOpen(true)}
-            title="Definições (pais)"
-            className="rounded-full bg-indigo-100 px-3 py-1 text-lg text-indigo-700 transition hover:bg-indigo-200"
-          >
-            ⚙️
-          </button>
-          <div className="flex flex-wrap items-center gap-1">
-            {SUBJECTS.map((s) => (
-              <button
-                key={s}
-                disabled={loading}
-                aria-pressed={subject === s}
-                onClick={() => updateSubject(s)}
-                className={`rounded-full px-3 py-1 text-sm font-medium transition ${
-                  subject === s
-                    ? "bg-indigo-600 text-white"
-                    : "bg-indigo-100 text-indigo-800 hover:bg-indigo-200"
-                }`}
-              >
-                {SUBJECT_ICONS[s]} {SUBJECT_LABELS[s]}
-              </button>
-            ))}
-          </div>
-        </div>
-      </header>
-
-      <main
-        aria-label="Conversa com o tutor"
-        className="mx-auto flex min-h-0 min-w-0 w-full max-w-2xl flex-1 flex-col gap-2 overflow-y-auto px-4 py-4"
-      >
-        {messages.length === 0 && !loading && stored.ready && (
-          <div className="mt-10 text-center">
-            <div className="mb-4 text-6xl">👋</div>
-            <p className="text-lg font-medium text-indigo-900">
-              {GREETINGS[subject]}
-            </p>
-            <p className="mt-2 text-sm text-indigo-700">
-              Dica: você pode anexar uma foto do seu caderno ou ficha com o
-              botão 📎!
-            </p>
-            <ConversationList
-              onOpen={openConversation}
-              onDeleted={() => {
-                resetInteraction();
-              }}
-            />
-          </div>
-        )}
-
-        {displayMessages.map((m, i) => (
-          <div
-            key={i}
-            className={`max-w-[90%] break-words whitespace-pre-wrap rounded-2xl px-4 py-3 text-[15px] leading-relaxed shadow-sm ${
-              m.role === "user"
-                ? "self-end bg-indigo-600 text-white"
-                : "self-start bg-white text-gray-800"
-            }`}
-          >
-            {m.role === "model" && (
-              <span className="mb-1 block text-xs font-semibold text-indigo-500">
-                Tutor
-              </span>
-            )}
-            {m.images && m.images.length > 0 && (
-              <span className="mb-2 flex flex-wrap gap-2">
-                {m.images.map((img, j) => (
-                  // eslint-disable-next-line @next/next/no-img-element -- preview base64 local, next/image não otimiza data-URLs
-                  <img
-                    key={j}
-                    src={`data:${img.mimeType};base64,${img.data}`}
-                    alt={`Foto anexada ${j + 1}`}
-                    className="max-h-40 rounded-lg border border-white/40"
-                  />
-                ))}
-              </span>
-            )}
-            {m.text}
-            {m.role === "model" && (
-              <span className="mt-2 flex items-center gap-3">
+              {settings.mode === "direct" && (
+                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                  {t("modo app")}
+                </span>
+              )}
+            </div>
+            <button
+              ref={settingsButtonRef}
+              disabled={!settingsReady || processing || listening}
+              aria-label={t("Definições (pais)")}
+              onClick={() => setSettingsOpen(true)}
+              title={t("Definições (pais)")}
+              className="rounded-full bg-indigo-100 px-3 py-1 text-lg text-indigo-700 transition hover:bg-indigo-200"
+            >
+              ⚙️
+            </button>
+            <div className="flex flex-wrap items-center gap-1">
+              {SUBJECTS.map((s) => (
                 <button
-                  onClick={() => handleSpeak(i, m.text)}
-                  title={
-                    speakingMessageIndex === i
-                      ? "Parar leitura"
-                      : "Ouvir esta resposta"
-                  }
-                  className={`text-xs font-medium ${
-                    speakingMessageIndex === i
-                      ? "text-red-500"
-                      : "text-indigo-400 hover:text-indigo-600"
+                  key={s}
+                  disabled={loading}
+                  aria-pressed={subject === s}
+                  onClick={() => updateSubject(s)}
+                  className={`rounded-full px-3 py-1 text-sm font-medium transition ${
+                    subject === s
+                      ? "bg-indigo-600 text-white"
+                      : "bg-indigo-100 text-indigo-800 hover:bg-indigo-200"
                   }`}
                 >
-                  {speakingMessageIndex === i ? "⏹️ Parar" : "🔊 Ouvir"}
+                  {SUBJECT_ICONS[s]} {SUBJECT_LABELS[s]}
                 </button>
-                <button
-                  onClick={() => handleExplainSimpler(i)}
-                  disabled={loading}
-                  title="Não entendi — explica de um jeito mais simples"
-                  className="text-xs font-medium text-indigo-400 transition hover:text-indigo-600 disabled:opacity-50"
-                >
-                  🤔 Não entendi
-                </button>
-              </span>
-            )}
+              ))}
+            </div>
           </div>
-        ))}
+        </header>
 
-        {processing && (
-          <p role="status" className="text-sm text-indigo-800">
-            A preparar a fotografia…
-          </p>
-        )}
-        {stored.error && (
-          <p
-            role="alert"
-            className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900"
-          >
-            {stored.error}{" "}
-            <button
-              className="underline"
-              onClick={() => void conversationStore.retry()}
-            >
-              Tentar guardar novamente
-            </button>
-          </p>
-        )}
-
-        {loading && (
-          <div
-            role="status"
-            aria-label="O tutor está a preparar a resposta"
-            className="flex max-w-[85%] items-center gap-2 self-start rounded-2xl bg-white px-4 py-3 text-gray-500 shadow-sm"
-          >
-            <span className="animate-bounce">●</span>
-            <span className="animate-bounce [animation-delay:150ms]">●</span>
-            <span className="animate-bounce [animation-delay:300ms]">●</span>
-          </div>
-        )}
-
-        {error && (
-          <div
-            role="alert"
-            className="self-center rounded-xl bg-red-100 px-4 py-2 text-sm text-red-700"
-          >
-            {error}
-          </div>
-        )}
-
-        {showSupportBanner && (
-          <SupportBanner onClose={() => setSupportDismissed(true)} />
-        )}
-
-        {offlineTipsOpen && !loading && (
-          <OfflineTips
-            subject={subject}
-            onClose={() => setOfflineTipsOpen(false)}
-          />
-        )}
-
-        <div ref={bottomRef} />
-      </main>
-
-      <footer
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-        className="border-t border-indigo-100 bg-white/80 backdrop-blur"
-      >
-        {pendingImages.length > 0 && (
-          <div className="mx-auto flex max-w-2xl flex-wrap gap-2 px-4 pt-3">
-            {pendingImages.map((p) => (
-              <div key={p.id} className="relative">
-                {/* eslint-disable-next-line @next/next/no-img-element -- preview local (blob/data URL) temporário, next/image não otimiza */}
-                <img
-                  src={p.previewUrl}
-                  alt="Foto para enviar"
-                  className="h-20 w-20 rounded-lg border border-indigo-200 object-cover"
-                />
-                <button
-                  type="button"
-                  onClick={() => removePendingImage(p.id)}
-                  aria-label="Remover foto"
-                  title="Remover foto"
-                  className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-xs text-white"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        <form
-          onSubmit={sendMessage}
-          className="mx-auto grid w-full max-w-2xl grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-3"
+        <main
+          aria-label={t("Conversa com o tutor")}
+          className="mx-auto flex min-h-0 min-w-0 w-full max-w-2xl flex-1 flex-col gap-2 overflow-y-auto px-4 py-4"
         >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            multiple
-            hidden
-            onChange={handleFilesSelected}
-          />
-          <div className="col-span-2 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={loading || processing || listening}
-              aria-label="Anexar foto da galeria"
-              title="Anexar foto da galeria"
-              className="rounded-full bg-indigo-100 px-3 py-2 text-xl text-indigo-700 transition hover:bg-indigo-200 disabled:opacity-50"
+          {messages.length === 0 && !loading && stored.ready && (
+            <div className="mt-10 text-center">
+              <div className="mb-4 text-6xl">👋</div>
+              <p className="text-lg font-medium text-indigo-900">
+                {profile.locale === "pt-PT"
+                  ? GREETINGS_PT[subject]
+                  : GREETINGS[subject]}
+              </p>
+              <p className="mt-2 text-sm text-indigo-700">
+                {t(
+                  "Dica: podes anexar uma foto do teu caderno ou ficha com o botão 📎!",
+                )}
+              </p>
+              <ConversationList
+                onOpen={openConversation}
+                onDeleted={() => {
+                  resetInteraction();
+                }}
+              />
+            </div>
+          )}
+
+          {active?.photoContext && (
+            <details className="w-full min-w-0 rounded-xl border border-indigo-200 bg-white/80 p-3 text-sm text-indigo-900">
+              <summary className="cursor-pointer font-medium">
+                {t("Enunciados das últimas fotografias")}
+              </summary>
+              <p className="mt-2 text-xs text-indigo-600">
+                {t(
+                  "Disponíveis nesta conversa para as perguntas seguintes. As imagens não são guardadas.",
+                )}
+              </p>
+              <p className="mt-2 break-words">{active.photoContext.summary}</p>
+              <ul className="mt-2 space-y-2">
+                {active.photoContext.exercises.map((exercise, index) => (
+                  <li key={index} className="break-words whitespace-pre-wrap">
+                    <strong>
+                      {t("Fotografia")} {exercise.photo} · {exercise.label}
+                    </strong>
+                    <br />
+                    {exercise.statement}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+          {displayMessages.map((m, i) => (
+            <div
+              key={i}
+              className={`max-w-[90%] break-words whitespace-pre-wrap rounded-2xl px-4 py-3 text-[15px] leading-relaxed shadow-sm ${
+                m.role === "user"
+                  ? "self-end bg-indigo-600 text-white"
+                  : "self-start bg-white text-gray-800"
+              }`}
             >
-              📎
-            </button>
-            <button
-              type="button"
-              onClick={handleTakePhoto}
-              disabled={loading || processing || listening}
-              aria-label="Tirar foto com a câmara"
-              title="Tirar foto com a câmara"
-              className="rounded-full bg-indigo-100 px-3 py-2 text-xl text-indigo-700 transition hover:bg-indigo-200 disabled:opacity-50"
+              {m.role === "model" && (
+                <span className="mb-1 block text-xs font-semibold text-indigo-500">
+                  {t("Tutor")}
+                </span>
+              )}
+              {m.images && m.images.length > 0 && (
+                <span className="mb-2 flex flex-wrap gap-2">
+                  {m.images.map((img, j) => (
+                    // eslint-disable-next-line @next/next/no-img-element -- preview base64 local, next/image não otimiza data-URLs
+                    <img
+                      key={j}
+                      src={`data:${img.mimeType};base64,${img.data}`}
+                      alt={`Foto anexada ${j + 1}`}
+                      className="max-h-40 rounded-lg border border-white/40"
+                    />
+                  ))}
+                </span>
+              )}
+              {m.text}
+              {m.role === "model" && (
+                <span className="mt-2 flex items-center gap-3">
+                  <button
+                    onClick={() => handleSpeak(i, m.text)}
+                    title={t(
+                      speakingMessageIndex === i
+                        ? "Parar leitura"
+                        : "Ouvir esta resposta",
+                    )}
+                    className={`text-xs font-medium ${
+                      speakingMessageIndex === i
+                        ? "text-red-500"
+                        : "text-indigo-400 hover:text-indigo-600"
+                    }`}
+                  >
+                    {t(speakingMessageIndex === i ? "⏹️ Parar" : "🔊 Ouvir")}
+                  </button>
+                  <button
+                    onClick={() => handleExplainSimpler(i)}
+                    disabled={loading}
+                    title={t("Não entendi — explica de uma forma mais simples")}
+                    className="text-xs font-medium text-indigo-400 transition hover:text-indigo-600 disabled:opacity-50"
+                  >
+                    {t("🤔 Não entendi")}
+                  </button>
+                </span>
+              )}
+            </div>
+          ))}
+
+          {processing && (
+            <p role="status" className="text-sm text-indigo-800">
+              {t("A preparar a fotografia…")}
+            </p>
+          )}
+          {stored.error && (
+            <p
+              role="alert"
+              className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900"
             >
-              📷
-            </button>
-            {speechSupported && (
+              {t(stored.error)}{" "}
+              <button
+                className="underline"
+                onClick={() => void conversationStore.retry()}
+              >
+                {t("Tentar guardar novamente")}
+              </button>
+            </p>
+          )}
+
+          {loading && (
+            <div
+              role="status"
+              aria-label={t("O tutor está a preparar a resposta")}
+              className="flex max-w-[85%] items-center gap-2 self-start rounded-2xl bg-white px-4 py-3 text-gray-500 shadow-sm"
+            >
+              <span className="animate-bounce">●</span>
+              <span className="animate-bounce [animation-delay:150ms]">●</span>
+              <span className="animate-bounce [animation-delay:300ms]">●</span>
+            </div>
+          )}
+
+          {error && (
+            <div
+              role="alert"
+              className="self-center rounded-xl bg-red-100 px-4 py-2 text-sm text-red-700"
+            >
+              {t(error)}
+            </div>
+          )}
+
+          {showSupportBanner && (
+            <SupportBanner
+              country={profile.country}
+              onClose={() => setSupportDismissed(true)}
+            />
+          )}
+
+          {offlineTipsOpen && !loading && (
+            <OfflineTips
+              subject={subject}
+              onClose={() => setOfflineTipsOpen(false)}
+            />
+          )}
+
+          <div ref={bottomRef} />
+        </main>
+
+        <footer
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+          className="border-t border-indigo-100 bg-white/80 backdrop-blur"
+        >
+          {pendingImages.length > 0 && (
+            <div className="mx-auto flex max-w-2xl flex-wrap gap-2 px-4 pt-3">
+              {pendingImages.map((p) => (
+                <div key={p.id} className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- preview local (blob/data URL) temporário, next/image não otimiza */}
+                  <img
+                    src={p.previewUrl}
+                    alt="Foto para enviar"
+                    className="h-20 w-20 rounded-lg border border-indigo-200 object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removePendingImage(p.id)}
+                    aria-label={t("Remover foto")}
+                    title={t("Remover foto")}
+                    className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-xs text-white"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <form
+            onSubmit={sendMessage}
+            className="mx-auto grid w-full max-w-2xl grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-3"
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              hidden
+              onChange={handleFilesSelected}
+            />
+            <div className="col-span-2 flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={handleListen}
-                disabled={loading || listening || processing}
-                aria-label="Ditar pergunta"
-                title={
-                  listening
-                    ? "A ouvir... fala agora"
-                    : "Falar em vez de escrever"
-                }
-                className={`rounded-full px-3 py-2 text-xl transition disabled:opacity-50 ${
-                  listening
-                    ? "animate-pulse bg-red-500 text-white"
-                    : "bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
-                }`}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading || processing || listening}
+                aria-label={t("Anexar foto da galeria")}
+                title={t("Anexar foto da galeria")}
+                className="rounded-full bg-indigo-100 px-3 py-2 text-xl text-indigo-700 transition hover:bg-indigo-200 disabled:opacity-50"
               >
-                🎤
+                📎
+              </button>
+              <button
+                type="button"
+                onClick={handleTakePhoto}
+                disabled={loading || processing || listening}
+                aria-label={t("Tirar foto com a câmara")}
+                title={t("Tirar foto com a câmara")}
+                className="rounded-full bg-indigo-100 px-3 py-2 text-xl text-indigo-700 transition hover:bg-indigo-200 disabled:opacity-50"
+              >
+                📷
+              </button>
+              {speechSupported && (
+                <button
+                  type="button"
+                  onClick={handleListen}
+                  disabled={loading || listening || processing}
+                  aria-label={t("Ditar pergunta")}
+                  title={t(
+                    listening
+                      ? "A ouvir... fala agora"
+                      : "Falar em vez de escrever",
+                  )}
+                  className={`rounded-full px-3 py-2 text-xl transition disabled:opacity-50 ${
+                    listening
+                      ? "animate-pulse bg-red-500 text-white"
+                      : "bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                  }`}
+                >
+                  🎤
+                </button>
+              )}
+            </div>
+            <input
+              aria-label={t("A tua pergunta")}
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={t("Escreve a tua dúvida aqui...")}
+              maxLength={1000}
+              disabled={loading}
+              // Teclado com correção automática e sugestões de palavras (pt-BR)
+              autoComplete="on"
+              autoCorrect="on"
+              autoCapitalize="sentences"
+              spellCheck={true}
+              lang={profile.locale}
+              inputMode="text"
+              className="min-w-0 w-full rounded-full border border-indigo-200 bg-white px-4 py-2 text-[15px] text-gray-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-60"
+            />
+            <button
+              type="submit"
+              disabled={
+                !stored.ready ||
+                loading ||
+                processing ||
+                listening ||
+                (!input.trim() && pendingImages.length === 0)
+              }
+              className="rounded-full bg-indigo-600 px-5 py-2 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {t("Enviar")}
+            </button>
+            {(messages.length > 0 || loading || processing) && (
+              <button
+                type="button"
+                onClick={clearChat}
+                aria-label={t("Limpar conversa")}
+                title={t("Limpar conversa")}
+                className="col-span-2 justify-self-end rounded-full bg-gray-200 px-3 py-2 text-gray-600 transition hover:bg-gray-300"
+              >
+                🗑️
               </button>
             )}
-          </div>
-          <input
-            aria-label="A tua pergunta"
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Escreve sua dúvida aqui..."
-            maxLength={1000}
-            disabled={loading}
-            // Teclado com correção automática e sugestões de palavras (pt-BR)
-            autoComplete="on"
-            autoCorrect="on"
-            autoCapitalize="sentences"
-            spellCheck={true}
-            lang="pt-BR"
-            inputMode="text"
-            className="min-w-0 w-full rounded-full border border-indigo-200 bg-white px-4 py-2 text-[15px] text-gray-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-60"
-          />
-          <button
-            type="submit"
-            disabled={
-              !stored.ready ||
-              loading ||
-              processing ||
-              listening ||
-              (!input.trim() && pendingImages.length === 0)
-            }
-            className="rounded-full bg-indigo-600 px-5 py-2 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
-          >
-            Enviar
-          </button>
-          {(messages.length > 0 || loading || processing) && (
-            <button
-              type="button"
-              onClick={clearChat}
-              aria-label="Limpar conversa"
-              title="Limpar conversa"
-              className="col-span-2 justify-self-end rounded-full bg-gray-200 px-3 py-2 text-gray-600 transition hover:bg-gray-300"
-            >
-              🗑️
-            </button>
-          )}
-        </form>
-      </footer>
+          </form>
+        </footer>
 
-      {settingsOpen && (
-        <Settings
-          settings={settings}
-          onClose={() => setSettingsOpen(false)}
-          onSaved={(next) => {
-            if (loading) {
-              if (pendingUser) setInput(pendingUser.text);
-              requestConversation.current = null;
-              guard.current.cancel();
-              setPendingUser(null);
-              setLoading(false);
-            }
-            setSettings(next);
-            setSettingsOpen(false);
-            setError(null);
-          }}
-        />
-      )}
-    </div>
+        {settingsOpen && (
+          <Settings
+            settings={settings}
+            onClose={() => setSettingsOpen(false)}
+            onSaved={(next) => {
+              stopSpeaking();
+              setSpeakingMessageIndex(null);
+              if (loading) {
+                if (pendingUser) setInput(pendingUser.text);
+                requestConversation.current = null;
+                guard.current.cancel();
+                setPendingUser(null);
+                setLoading(false);
+              }
+              setSettings(next);
+              setSettingsOpen(false);
+              setError(null);
+            }}
+          />
+        )}
+      </div>
+    </LocaleContext.Provider>
   );
 }

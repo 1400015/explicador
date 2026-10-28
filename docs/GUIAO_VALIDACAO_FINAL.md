@@ -1,4 +1,4 @@
-# Guião de validação final — Tutor IA 1.2.0
+# Guião de validação final — Tutor IA 1.3.0
 
 Usar um dispositivo ou perfil Android de teste. Registar o modelo, a versão do
 Android, o commit, a versão da app e o resultado de cada cenário. Os registos não
@@ -57,7 +57,7 @@ Este cenário exige a assinatura original e uma instalação antiga no perfil de
 
 1. Na versão antiga, guardar uma chave válida, configurar um PIN e criar conversas
    de teste. Fechar e reabrir para confirmar o estado inicial.
-2. Instalar a versão 1.2.0 assinada por cima, sem desinstalar nem limpar os dados.
+2. Instalar a versão 1.3.0 assinada por cima, sem desinstalar nem limpar os dados.
 3. Confirmar conversas, disciplina ativa, PIN e funcionamento da chave no modo
    Esta app. Fechar, reiniciar o dispositivo e voltar a confirmar.
 4. Errar o PIN três vezes, fechar e reabrir as Definições: o atraso não deve ser
@@ -83,6 +83,36 @@ cifrado, IV aleatório, recriação do cofre, remoção e rejeição de adultera
    explícita, conservação do rascunho e das conversas, bloqueio com fotografias ou
    pedido pendente e indicação para fechar outras janelas.
 
+## 6. Perfil de idioma e ensino
+
+1. Nas Definições desbloqueadas, escolher pt-PT, Portugal, 7.º ano e currículo
+   nacional. Guardar, reabrir e confirmar os valores. Perguntar sobre um exercício
+   e confirmar português europeu e dificuldade adequada.
+2. Mudar para pt-BR, Brasil e 1.º ano do ensino médio. Confirmar interface,
+   resposta, reconhecimento de voz e leitura na variante escolhida; a voz depende
+   do que estiver instalado. Confirmar CVV 188/SAMU 192 nos recursos de apoio.
+3. Confirmar que país e idioma podem ser escolhidos separadamente e que a opção
+   internacional conserva a seleção depois de reabrir.
+4. Com PIN ativo, confirmar que mudar o perfil exige o mesmo desbloqueio e a
+   confirmação de gravação que as restantes definições.
+
+## 7. Contexto das fotografias
+
+1. Enviar uma ficha de teste legível com dois exercícios identificados. Confirmar
+   a dica do tutor e consultar Enunciados das últimas fotografias: transcrição e
+   referências devem corresponder à imagem, sem soluções inventadas.
+2. Perguntar pelo segundo exercício sem reenviar a fotografia. Repetir com Não
+   entendi e depois de fechar/reabrir a app. Confirmar que o contexto se conserva.
+3. Usar duas fotografias distintas e pedir o exercício da fotografia 2. Confirmar
+   que as referências respeitam a ordem dos anexos.
+4. Enviar uma nova ficha; o painel deve passar ao último grupo de fotografias.
+   Uma leitura sem enunciados legíveis deve pedir outra foto e não reutilizar o
+   contexto da ficha anterior como se pertencesse à nova.
+5. Forçar falta de ligação ao enviar uma ficha: pergunta e anexos devem permanecer
+   disponíveis e não deve aparecer um resumo anunciado como aprovado.
+6. Limpar/apagar a conversa durante um pedido e reiniciar. Nem resposta antiga
+   nem contexto antigo devem reaparecer.
+
 ## Registo de execução
 
 | Cenário | Dispositivo / browser | Commit | Resultado / ocorrência |
@@ -92,6 +122,8 @@ cifrado, IV aleatório, recriação do cofre, remoção e rejeição de adultera
 | Câmara, voz, teclado e ciclo de vida | A preencher | A preencher | Pendente |
 | Atualização assinada, migração e PIN | A preencher | A preencher | Pendente |
 | PWA instalada, offline e atualização | A preencher | A preencher | Pendente |
+| Perfil pt-PT/pt-BR, país, ano e currículo | A preencher | A preencher | Pendente |
+| Fotografia, seguimento, retoma e limpeza do contexto | A preencher | A preencher | Pendente |
 
 Os resultados acima só são preenchidos depois da execução. Para assinatura,
 credenciais de CI e preparação de release, ver [distribuição](DISTRIBUICAO.md).

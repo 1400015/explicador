@@ -2,6 +2,12 @@ import { prepareHistory } from "./history";
 import { SUBJECT_LABELS, type Subject } from "./prompt";
 import { GEMINI_KEY_PATTERN, containsBlockedContent } from "./safety";
 import {
+  isLearningProfile,
+  learningProfile,
+  LEGACY_PROFILE,
+} from "./learning-profile";
+import { readPhotoContext } from "./photo-context";
+import {
   ALLOWED_IMAGE_TYPES,
   MAX_IMAGES_PER_MESSAGE,
   MAX_IMAGE_BYTES,
@@ -33,6 +39,16 @@ export function validateChatRequest(body: unknown) {
     images = [],
     apiKey,
   } = body;
+  if (body.profile !== undefined && !isLearningProfile(body.profile))
+    throw new ChatRequestError("Perfil de idioma e ensino inválido.");
+  const photoContext =
+    body.photoContext === undefined
+      ? null
+      : readPhotoContext(body.photoContext);
+  if (body.photoContext !== undefined && !photoContext)
+    throw new ChatRequestError(
+      "Contexto das fotografias inválido ou demasiado longo.",
+    );
   if (typeof message !== "string" || !message.trim())
     throw new ChatRequestError("Envie uma pergunta ou uma foto. 📸");
   if (message.length > MAX_MESSAGE_LENGTH)
@@ -91,6 +107,9 @@ export function validateChatRequest(body: unknown) {
     history: prepareHistory(history as ChatMessage[]),
     images: images as ChatImage[],
     apiKey: apiKey as string | undefined,
+    profile: learningProfile(body.profile, LEGACY_PROFILE),
+    photoContext,
+    rememberPhotos: body.clientVersion === 3,
   };
 }
 

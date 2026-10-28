@@ -1,8 +1,17 @@
 "use client";
 
-import { SUPPORT_RESOURCES } from "@/lib/support";
+import { supportResources } from "@/lib/support";
+import type { Country } from "@/lib/learning-profile";
+import { useLocale } from "@/lib/locale";
 
-export default function SupportBanner({ onClose }: { onClose: () => void }) {
+export default function SupportBanner({
+  country = "PT",
+  onClose,
+}: {
+  country?: Country;
+  onClose: () => void;
+}) {
+  const { t } = useLocale();
   return (
     <div
       role="alert"
@@ -10,20 +19,21 @@ export default function SupportBanner({ onClose }: { onClose: () => void }) {
     >
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-semibold text-amber-900">
-          💛 Se estiveres a passar por algo difícil, não tens de passar
-          sozinho/a. Pedir ajuda é sinal de força!
+          {t(
+            "💛 Se estiveres a passar por algo difícil, não tens de passar sozinho/a. Pedir ajuda é sinal de força!",
+          )}
         </p>
         <button
           onClick={onClose}
-          aria-label="Fechar contactos de apoio"
-          title="Fechar"
+          aria-label={t("Fechar contactos de apoio")}
+          title={t("Fechar")}
           className="rounded-full px-2 text-amber-700 transition hover:bg-amber-100"
         >
           ✕
         </button>
       </div>
       <ul className="mt-2 space-y-1">
-        {SUPPORT_RESOURCES.map((r) => (
+        {supportResources(country).map((r) => (
           <li key={r.name} className="text-xs text-amber-800">
             {r.emoji} <span className="font-medium">{r.name}</span>
             {r.detail ? ` — ${r.detail}` : ""}

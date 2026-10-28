@@ -4,7 +4,7 @@ Tutor de estudos para alunos de cerca de 12 anos, com perguntas guiadas, fotogra
 ditado, leitura e verificação local de cálculos. Next.js + TypeScript para web/PWA
 e Capacitor para Android.
 
-O código prepara a versão **1.2.0**. Os APKs antigos da raiz são da versão 1.1.5.
+Esta branch prepara a versão **1.3.0**, sobre a estabilização da 1.2.0. Os APKs antigos da raiz são da versão 1.1.5.
 Novos artefactos são produzidos pelo build e pelo workflow de release.
 
 ## Desenvolvimento
@@ -63,8 +63,37 @@ moderação integral da resposta. Apenas um resultado estrito aprova o texto ger
 Falha ou timeout do moderador não apresenta nem guarda a resposta e permite repetir.
 
 O banner de apoio mantém-se depois da resposta e reativa perante novo pedido de
-ajuda. Contactos de Portugal: SOS Voz Amiga e 112. O contexto pedagógico atual é
-pt-BR; localização e currículo configuráveis são a evolução seguinte.
+ajuda. Contactos de Portugal: SOS Voz Amiga e 112. Nas Definições, os pais escolhem pt-PT/pt-BR, país (Portugal/Brasil), ano escolar e currículo. A voz e os contactos de apoio acompanham essas escolhas.
+
+## Perfil escolar e contexto das fotografias
+
+Em **Definições → Idioma e ensino**, escolher o idioma, o país de estudo, o ano
+escolar e o currículo nacional correspondente ou internacional. O Brasil inclui
+os nove anos do ensino fundamental e os três do ensino médio. O ano é uma
+referência pedagógica; não são pedidos nome ou data de nascimento. Sem perfil
+anterior, a interface adota pt-PT, Portugal e 7.º ano.
+
+A variante aplica-se à interface principal, às respostas, ao ditado e à leitura.
+A voz exata depende das vozes instaladas. Os recursos de apoio seguem o país:
+Portugal mantém SOS Voz Amiga/112; Brasil usa CVV 188 e SAMU 192.
+
+Ao enviar fotografias, o tutor devolve a resposta e um resumo estruturado dos
+exercícios visíveis. Ambos passam pela moderação antes de aparecerem ou serem
+guardados. O painel **Enunciados das últimas fotografias** permite consultar a
+transcrição. Nas perguntas seguintes, incluindo Não entendi, a app envia esse
+contexto textual; as imagens anteriores não são reenviadas.
+
+Só o último grupo de fotografias é conservado como contexto: até quatro imagens,
+oito enunciados e 5000 caracteres de contexto. Uma nova fotografia substitui esse
+contexto depois de uma resposta aprovada; uma leitura sem enunciados legíveis
+retira o contexto anterior. Limpar/apagar a conversa elimina também o resumo.
+As imagens continuam temporárias e não entram no armazenamento das conversas.
+
+O modo Servidor exige também atualizar o backend para suportar o novo perfil e
+a memória das fotografias. Pedidos de clientes anteriores continuam compatíveis,
+com o contexto pedagógico antigo. Nenhum campo permite escolher modelo ou endpoint.
+
+Ver [notas 1.3.0](docs/RELEASE_NOTES_1.3.0.md).
 
 ## Configuração
 

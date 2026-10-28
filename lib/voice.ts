@@ -1,6 +1,7 @@
 "use client";
 
 import { SpeechRecognition } from "@capacitor-community/speech-recognition";
+import type { TutorLocale } from "./learning-profile";
 
 // Tipos mínimos da Web Speech API (não incluídos no lib.dom do TypeScript)
 type WebSpeechRecognitionEvent = {
@@ -44,10 +45,12 @@ export function isSpeechRecognitionAvailable(): boolean {
 }
 
 /**
- * Ouve o utilizador e devolve o texto reconhecido (pt-BR).
+ * Ouve o utilizador na variante escolhida no perfil.
  * Na app Android usa o reconhecimento nativo; no browser usa a Web Speech API.
  */
-export async function listenOnce(): Promise<string> {
+export async function listenOnce(
+  locale: TutorLocale = "pt-BR",
+): Promise<string> {
   if (isCapacitorNative()) {
     const available = await SpeechRecognition.available();
     if (!available.available) {
@@ -65,7 +68,7 @@ export async function listenOnce(): Promise<string> {
       }
     }
     const result = await SpeechRecognition.start({
-      language: "pt-BR",
+      language: locale,
       partialResults: false,
       popup: false,
     });
@@ -81,7 +84,7 @@ export async function listenOnce(): Promise<string> {
   }
   return new Promise((resolve, reject) => {
     const recognition = new SR();
-    recognition.lang = "pt-BR";
+    recognition.lang = locale;
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
     recognition.onresult = (event) => {
@@ -110,15 +113,23 @@ export function isSpeaking(): boolean {
   return speaking;
 }
 
-/** Lê um texto em voz alta (pt-BR). Usa a voz do próprio sistema. */
-export function speak(text: string, onEnd?: () => void): void {
+/** Lê na variante escolhida, usando uma voz instalada no sistema. */
+export function speak(
+  text: string,
+  onEnd?: () => void,
+  locale: TutorLocale = "pt-BR",
+): void {
   if (typeof window === "undefined" || !window.speechSynthesis) {
     onEnd?.();
     return;
   }
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = "pt-BR";
+  utterance.lang = locale;
+  const voice = window.speechSynthesis
+    .getVoices()
+    .find((item) => item.lang.toLowerCase() === locale.toLowerCase());
+  if (voice) utterance.voice = voice;
   utterance.rate = 1;
   utterance.pitch = 1;
   speaking = true;

@@ -1,22 +1,18 @@
-# Estado da entrega — explicador / Tutor IA
+# Estado da evolução — Tutor IA 1.3.0
 
-O código prepara a versão **1.2.0**. Primeiro bloco: chat, conversas, moderação e
-mobile. Segundo bloco: modos, chave protegida, PIN, PWA e CI/distribuição Android.
+Esta branch acrescenta perfil de idioma/ensino e contexto persistente das últimas
+fotografias sobre a estabilização da 1.2.0 do PR #11. A versão não foi publicada.
 
 - [Funcionamento e configuração](README.md)
-- [Notas da versão preparada](docs/RELEASE_NOTES_1.2.0.md)
-- [Resultados e validações pendentes](docs/VALIDACAO_1.2.0.md)
-- [Assinatura e validação Android](docs/DISTRIBUICAO.md)
-- [CI](.github/workflows/ci.yml)
-- [Release assinada em rascunho](.github/workflows/android-release.yml)
+- [Notas 1.3.0 e limites da implementação](docs/RELEASE_NOTES_1.3.0.md)
+- [Distribuição Android](docs/DISTRIBUICAO.md)
+- [Validação final em dispositivo](docs/GUIAO_VALIDACAO_FINAL.md)
+- [Evidências anteriores da estabilização 1.2.0](docs/VALIDACAO_1.2.0.md)
 
-O repositório GitHub é público. Credenciais Gemini, keystore e palavras-passe não
-são incluídas no código. O certificado público esperado impede distribuir um APK
-com identidade diferente.
+O perfil é guardado com as definições protegidas pelo PIN existente. O contexto
+extraído das fotografias é guardado com a conversa depois da moderação integral.
+Não se guardam as imagens. Ambos são usados nos três percursos de ligação.
 
-Os APKs da raiz são da versão 1.1.5. A versão 1.2.0 foi compilada localmente em
-debug e release sem assinatura; o APK debug teve identidade, versão e assinatura
-verificadas. Os resultados e as validações ainda pendentes constam do relatório.
-O CI web e Android passou, incluindo quatro testes instrumentados no emulador.
-Atualizar a instalação distribuída requer a keystore original. Publicação final
-depende de Gemini real e Android. As notas anteriores continuam no histórico Git.
+A validação com Gemini real, vozes/câmara num Android físico e atualização com a
+keystore original continua necessária. As evidências da 1.2.0 são históricas e
+não substituem a avaliação das funcionalidades novas.

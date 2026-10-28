@@ -41,6 +41,13 @@ import { TutorError } from "./tutor-error";
 export { TutorError } from "./tutor-error";
 import { prepareHistory } from "./history";
 import { moderate, MODERATION_UNAVAILABLE } from "./moderation";
+import type { LearningProfile } from "./learning-profile";
+import {
+  decodeTutorOutput,
+  photoContextPart,
+  photoGenerationConfig,
+  type PhotoContext,
+} from "./photo-context";
 
 const clients = new Map<string, GoogleGenAI>();
 export function clearDirectClients() {
@@ -81,6 +88,7 @@ function buildContents(
   history: ChatMessage[],
   message: string,
   images: ChatImage[],
+  photoContext?: PhotoContext,
 ): Content[] {
   // prepareHistory: so texto, ultimas MAX_HISTORY_MESSAGES, comeca em "user".
   // As imagens do historico nao sao reenviadas (evita pedidos enormes).
@@ -89,7 +97,10 @@ function buildContents(
     parts: [{ text: m.text } as Part],
   }));
 
-  const userParts: Part[] = [{ text: message } as Part];
+  const userParts: Part[] = [
+    ...photoContextPart(photoContext),
+    { text: message } as Part,
+  ];
   for (const img of images) {
     userParts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
   }
@@ -97,19 +108,28 @@ function buildContents(
   return [...past, { role: "user", parts: userParts }];
 }
 
-async function moderationCheck(client: GoogleGenAI, text: string) {
-  return moderate(text, async (prompt, abortSignal) => {
-    const res = await client.models.generateContent({
-      model: MODEL,
-      contents: prompt,
-      config: {
-        abortSignal,
-        thinkingConfig: { thinkingLevel: "LOW" as never },
-        maxOutputTokens: 32,
-      },
-    });
-    return res.text ?? "";
-  });
+async function moderationCheck(
+  client: GoogleGenAI,
+  text: string,
+  studentAge = 12,
+) {
+  return moderate(
+    text,
+    async (prompt, abortSignal) => {
+      const res = await client.models.generateContent({
+        model: MODEL,
+        contents: prompt,
+        config: {
+          abortSignal,
+          thinkingConfig: { thinkingLevel: "LOW" as never },
+          maxOutputTokens: 32,
+        },
+      });
+      return res.text ?? "";
+    },
+    15_000,
+    studentAge,
+  );
 }
 
 export async function askTutorDirect(params: {
@@ -119,6 +139,10 @@ export async function askTutorDirect(params: {
   subject: Subject;
   images: ChatImage[];
   signal?: AbortSignal;
+  profile?: LearningProfile;
+  photoContext?: PhotoContext;
+  rememberPhotos?: boolean;
+  onPhotoContext?: (context: PhotoContext) => void;
 }): Promise<string> {
   const { apiKey, message, history, subject, images } = params;
 
@@ -164,6 +188,9 @@ export async function askTutorDirect(params: {
         history,
         subject,
         images,
+        profile: params.profile,
+        photoContext: params.photoContext,
+        rememberPhotos: params.rememberPhotos,
       });
       if (!text) {
         return "N\u00e3o consegui ver direito essa foto. Tenta tirar outra com mais luz e mais de perto? \ud83d\udcf8";
@@ -186,11 +213,16 @@ export async function askTutorDirect(params: {
       const client = getClient(apiKey);
       const response = await client.models.generateContent({
         model: MODEL,
-        contents: buildContents(history, message, images),
+        contents: buildContents(history, message, images, params.photoContext),
         config: {
           abortSignal: params.signal,
-          systemInstruction: buildSystemPrompt(subject),
+          systemInstruction: buildSystemPrompt(
+            subject,
+            params.profile,
+            params.rememberPhotos && images.length > 0,
+          ),
           maxOutputTokens: MAX_OUTPUT_TOKENS,
+          ...photoGenerationConfig(params.rememberPhotos ? images.length : 0),
           thinkingConfig: {
             thinkingLevel: THINKING_LEVEL as never,
             includeThoughts: false,
@@ -227,19 +259,36 @@ export async function askTutorDirect(params: {
     }
 
     params.signal?.throwIfAborted();
-    if (outputIsInappropriate(text)) {
+    const result = decodeTutorOutput(
+      text,
+      params.rememberPhotos ? images.length : 0,
+    );
+    const moderationText =
+      result.reply +
+      (result.photoContext ? "\n" + JSON.stringify(result.photoContext) : "");
+    if (outputIsInappropriate(moderationText)) {
       return SAFE_FALLBACK;
     }
 
     const isSafe = isNativeHttpAvailable()
-      ? await moderationCheckNativeHttp(apiKey, text)
-      : await moderationCheck(getClient(apiKey), text);
+      ? await moderationCheckNativeHttp(
+          apiKey,
+          moderationText,
+          (params.profile?.schoolYear ?? 7) + 5,
+        )
+      : await moderationCheck(
+          getClient(apiKey),
+          moderationText,
+          (params.profile?.schoolYear ?? 7) + 5,
+        );
     if (isSafe === "unavailable") throw new TutorError(MODERATION_UNAVAILABLE);
     if (isSafe === "rejected") {
       return SAFE_FALLBACK;
     }
 
-    return text;
+    params.signal?.throwIfAborted();
+    if (result.photoContext) params.onPhotoContext?.(result.photoContext);
+    return result.reply;
   } catch (error) {
     if (error instanceof TutorError) throw error;
     // Traduz o erro real (chave invalida, quota, rede, bloqueio) numa mensagem clara.

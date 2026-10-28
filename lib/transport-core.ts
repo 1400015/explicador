@@ -2,12 +2,15 @@ import type { Subject } from "./prompt";
 import type { ChatImage, ChatMessage } from "./shared";
 import { prepareHistory } from "./history";
 import { TutorError } from "./tutor-error";
+import { learningProfile, type LearningProfile } from "./learning-profile";
+import { readPhotoContext, type PhotoContext } from "./photo-context";
 
 export type ConnectionSettings = {
   mode: "direct" | "server";
   apiKey: string;
   serverUrl: string;
   allowLocalHttp?: boolean;
+  profile?: LearningProfile;
 };
 export type TutorQuestion = {
   message: string;
@@ -15,6 +18,10 @@ export type TutorQuestion = {
   images: ChatImage[];
   history: ChatMessage[];
   signal?: AbortSignal;
+  photoContext?: PhotoContext;
+  onPhotoContext?: (context: PhotoContext) => void;
+  profile?: LearningProfile;
+  rememberPhotos?: boolean;
 };
 
 export function serverEndpoint(value: string, allowLocalHttp = false): string {
@@ -105,6 +112,8 @@ export function createTutorTransport(
             history: prepareHistory(question.history),
             apiKey: settings.apiKey.trim(),
             signal: controller.signal,
+            profile: learningProfile(settings.profile),
+            rememberPhotos: true,
           });
         }
         const native = deps.native();
@@ -122,7 +131,9 @@ export function createTutorTransport(
             subject: question.subject,
             images: question.images,
             history: prepareHistory(question.history),
-            clientVersion: 2,
+            clientVersion: 3,
+            profile: learningProfile(settings.profile),
+            photoContext: question.photoContext,
           },
           controller.signal,
           native,
@@ -130,6 +141,7 @@ export function createTutorTransport(
         const data = response.data as {
           reply?: unknown;
           error?: unknown;
+          photoContext?: unknown;
         } | null;
         if (response.status >= 400)
           throw new TutorError(
@@ -141,6 +153,16 @@ export function createTutorTransport(
           throw new TutorError(
             "O servidor não enviou uma resposta válida. Tenta novamente.",
           );
+        controller.signal.throwIfAborted();
+        const context = readPhotoContext(data.photoContext);
+        if (
+          data.photoContext != null &&
+          (!context || context.photoCount !== question.images.length)
+        )
+          throw new TutorError(
+            "O servidor enviou enunciados de fotografias inválidos. Tenta novamente.",
+          );
+        if (context) question.onPhotoContext?.(context);
         return data.reply;
       };
       return await Promise.race([work(), aborted]);
