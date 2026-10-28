@@ -5,8 +5,12 @@ import { askTutorDirect } from "./gemini-client";
 import { isNativeApp } from "./settings";
 import { createTutorTransport } from "./transport-core";
 import { normalizeNativeError } from "./gemini-http";
-import { friendlyApiError, classifyApiError } from "./api-error";
-import { TutorError } from "./tutor-error";
+import {
+  friendlyApiError,
+  classifyApiError,
+  apiErrorDiagnostic,
+} from "./api-error";
+import { TutorError, ensureNotAborted } from "./tutor-error";
 
 export const askTutor = createTutorTransport({
   native: isNativeApp,
@@ -24,7 +28,7 @@ export const askTutor = createTutorTransport({
           responseType: "json",
           disableRedirects: true,
         });
-        signal.throwIfAborted();
+        ensureNotAborted(signal);
         return { status: response.status, data: response.data };
       }
       const response = await fetch(url, {
@@ -36,10 +40,12 @@ export const askTutor = createTutorTransport({
       });
       return { status: response.status, data: await response.json() };
     } catch (error) {
+      if (error instanceof TutorError) throw error;
       const normalized = native ? normalizeNativeError(error) : error;
       throw new TutorError(
         friendlyApiError(normalized),
         classifyApiError(normalized),
+        apiErrorDiagnostic(normalized),
       );
     }
   },

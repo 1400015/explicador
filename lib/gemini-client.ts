@@ -19,7 +19,11 @@ import {
   SAFE_FALLBACK,
   GEMINI_KEY_PATTERN,
 } from "./safety";
-import { friendlyApiError, classifyApiError } from "./api-error";
+import {
+  friendlyApiError,
+  classifyApiError,
+  apiErrorDiagnostic,
+} from "./api-error";
 import {
   generateWithNativeHttp,
   moderationCheckNativeHttp,
@@ -37,7 +41,7 @@ import {
   type ChatMessage,
 } from "./shared";
 
-import { TutorError } from "./tutor-error";
+import { TutorError, ensureNotAborted } from "./tutor-error";
 export { TutorError } from "./tutor-error";
 import { prepareHistory } from "./history";
 import { moderate, MODERATION_UNAVAILABLE } from "./moderation";
@@ -169,13 +173,13 @@ export async function askTutorDirect(params: {
         return "N\u00e3o consegui ver direito essa foto. Tenta tirar outra com mais luz e mais de perto? \ud83d\udcf8";
       }
     } catch (err) {
-      // No Android, erros HTTP do CapacitorHttp vêm como exceção (sem .status).
-      // Normalizamos para { status, message: <json> } para o classificador funcionar.
+      // Preservar status HTTP e o código nativo das falhas de transporte.
       if (err instanceof TutorError) throw err;
       const normalized = normalizeNativeError(err);
       throw new TutorError(
         friendlyApiError(normalized),
         classifyApiError(normalized),
+        apiErrorDiagnostic(normalized),
       );
     }
   }
@@ -226,7 +230,7 @@ export async function askTutorDirect(params: {
       text = sdkText;
     }
 
-    params.signal?.throwIfAborted();
+    ensureNotAborted(params.signal);
     if (outputIsInappropriate(text)) {
       return SAFE_FALLBACK;
     }
@@ -234,15 +238,25 @@ export async function askTutorDirect(params: {
     const isSafe = isNativeHttpAvailable()
       ? await moderationCheckNativeHttp(apiKey, text)
       : await moderationCheck(getClient(apiKey), text);
-    if (isSafe === "unavailable") throw new TutorError(MODERATION_UNAVAILABLE);
+    if (isSafe === "unavailable")
+      throw new TutorError(
+        MODERATION_UNAVAILABLE,
+        undefined,
+        "MODERATION_UNAVAILABLE",
+      );
     if (isSafe === "rejected") {
       return SAFE_FALLBACK;
     }
 
+    ensureNotAborted(params.signal);
     return text;
   } catch (error) {
     if (error instanceof TutorError) throw error;
     // Traduz o erro real (chave invalida, quota, rede, bloqueio) numa mensagem clara.
-    throw new TutorError(friendlyApiError(error), classifyApiError(error));
+    throw new TutorError(
+      friendlyApiError(error),
+      classifyApiError(error),
+      apiErrorDiagnostic(error),
+    );
   }
 }

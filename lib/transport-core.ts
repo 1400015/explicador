@@ -1,7 +1,7 @@
 import type { Subject } from "./prompt";
 import type { ChatImage, ChatMessage } from "./shared";
 import { prepareHistory } from "./history";
-import { TutorError } from "./tutor-error";
+import { TutorError, ensureNotAborted } from "./tutor-error";
 
 export type ConnectionSettings = {
   mode: "direct" | "server";
@@ -93,7 +93,7 @@ export function createTutorTransport(
     });
     if (question.signal?.aborted) cancel();
     try {
-      controller.signal.throwIfAborted();
+      ensureNotAborted(controller.signal);
       const work = async () => {
         if (settings.mode === "direct") {
           if (!settings.apiKey.trim())
@@ -141,6 +141,7 @@ export function createTutorTransport(
           throw new TutorError(
             "O servidor não enviou uma resposta válida. Tenta novamente.",
           );
+        ensureNotAborted(controller.signal);
         return data.reply;
       };
       return await Promise.race([work(), aborted]);

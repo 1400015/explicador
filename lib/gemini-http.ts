@@ -136,25 +136,48 @@ export function makeApiError(
 
 /**
  * Normaliza erros vindos do CapacitorHttp nativo (Android).
- * No Android, respostas HTTP de erro (4xx/5xx) chegam como exceção (rejeição),
- * não como HttpResponse — e o código vem dentro do texto da mensagem.
- * Convertemos para o formato { status, message: <json> } que o classificador entende.
+ * Respostas HTTP normais conservam status/data. Exceções de transporte incluem
+ * o código da exceção Java, necessário para distinguir DNS, TLS e timeout.
  */
 export function normalizeNativeError(
   error: unknown,
-): Error & { status?: number } {
+): Error & { status?: number; code?: string } {
+  const value = error as {
+    message?: unknown;
+    name?: unknown;
+    code?: unknown;
+    status?: unknown;
+  } | null;
+  const message =
+    typeof value?.message === "string"
+      ? value.message
+      : typeof error === "string"
+        ? error
+        : "";
+  // Não confundir números de portas, endereços ou timeouts com status HTTP.
+  const match = message.match(
+    /(?:status code\s*[:=]?\s*|HTTP(?:\/\d(?:\.\d)?)?\s+)([1-5]\d{2})\b/i,
+  );
+  const status =
+    typeof value?.status === "number" &&
+    Number.isInteger(value.status) &&
+    value.status >= 100 &&
+    value.status <= 599
+      ? value.status
+      : match
+        ? parseInt(match[1], 10)
+        : undefined;
+  const err =
+    error instanceof Error
+      ? (error as Error & { status?: number; code?: string })
+      : (new Error(message) as Error & { status?: number; code?: string });
+  if (typeof value?.name === "string") err.name = value.name;
+  if (typeof value?.code === "string") err.code = value.code;
   if (
-    error instanceof Error &&
-    typeof (error as { status?: number }).status === "number"
-  ) {
-    return error as Error & { status: number };
-  }
-  const message = error instanceof Error ? error.message : String(error);
-  // Procura "Response with status code 400" ou similar no texto
-  const match =
-    message.match(/status code (\d{3})/i) ?? message.match(/\b(\d{3})\b/);
-  const status = match ? parseInt(match[1], 10) : undefined;
-  const err = new Error(message) as Error & { status?: number };
+    err.status !== undefined &&
+    (!Number.isInteger(err.status) || err.status < 100 || err.status > 599)
+  )
+    delete err.status;
   if (status !== undefined) err.status = status;
   return err;
 }
