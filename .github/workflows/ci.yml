@@ -38,6 +38,10 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: android-actions/setup-android@v3
+        with:
+          # O pacote legado "tools" deixou de estar disponível no SDK.
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - run: npm ci
@@ -61,5 +65,14 @@ jobs:
           arch: x86_64
           target: google_apis
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none
           script: cd android && ./gradlew --no-daemon :app:connectedDebugAndroidTest
+      - name: Android test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-reports
+          if-no-files-found: ignore
+          path: |
+            android/app/build/outputs/androidTest-results/
+            android/app/build/reports/androidTests/
