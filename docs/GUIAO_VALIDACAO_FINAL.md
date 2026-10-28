@@ -1,4 +1,4 @@
-# Guião de validação final — Tutor IA 1.3.1
+# Guião de validação final — Tutor IA 1.3.2
 
 Usar um dispositivo ou perfil Android de teste. Registar o modelo, a versão do
 Android, o commit, a versão da app e o resultado de cada cenário. Os registos não
@@ -27,6 +27,9 @@ assinada da app original continuam a usar a variante release.
    um endereço local. Um endereço público HTTP deve ser rejeitado.
 
 Resultado esperado: Testar ligação e chat usam o mesmo destino em cada modo.
+No teste, registar a referência segura de erro (versão/modo/categoria ou HTTP),
+sem divulgar a chave. Distinguir DNS, TLS, timeout e erros locais; estes últimos
+não devem abrir o painel que anuncia ausência de internet.
 
 ## 2. Geração e moderação
 
