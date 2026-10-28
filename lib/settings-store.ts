@@ -25,6 +25,8 @@ export interface SettingsStorage {
   getKey(persistent: boolean): Promise<string | null>;
   setKey(value: string, persistent: boolean): Promise<void>;
   removeKey(persistent: boolean): Promise<void>;
+  readLegacyKey?(): Promise<string | null>;
+  finishMigration?(): Promise<void>;
 }
 
 function decode(raw: string | null): AppSettings {
@@ -108,8 +110,12 @@ export function createSettingsStore(storage: SettingsStorage) {
       const saved =
         (await storage.getKey(settings.persistApiKey === true)) ?? null;
       if (saved !== null) settings.apiKey = saved;
-      else if (settings.apiKey)
-        await writeKey(settings.apiKey, settings.persistApiKey === true);
+      else {
+        settings.apiKey =
+          settings.apiKey || (await storage.readLegacyKey?.()) || "";
+        if (settings.apiKey)
+          await writeKey(settings.apiKey, settings.persistApiKey === true);
+      }
       if (settings.apiKey && !GEMINI_KEY_PATTERN.test(settings.apiKey))
         throw new Error(
           "A chave guardada não parece válida. Configura-a novamente nas Definições.",
@@ -117,6 +123,7 @@ export function createSettingsStore(storage: SettingsStorage) {
       await writeMetadata(settings);
       if (!storage.native)
         await storage.removeKey(settings.persistApiKey !== true);
+      await storage.finishMigration?.();
       cache = settings;
     } catch (error) {
       // O PIN e os restantes metadados continuam disponíveis; o erro do segredo nunca desbloqueia as definições.
@@ -140,14 +147,17 @@ export function createSettingsStore(storage: SettingsStorage) {
       }),
     save: (settings: AppSettings) =>
       run(async () => {
+        const current = await load();
         if (settings.apiKey)
           await writeKey(settings.apiKey, settings.persistApiKey === true);
         await writeMetadata(settings);
         if (!storage.native && settings.apiKey)
           await storage.removeKey(settings.persistApiKey !== true);
+        if (settings.apiKey || !current.apiKeyIssue)
+          await storage.finishMigration?.();
         cache = {
           ...settings,
-          ...(settings.apiKey ? { apiKeyIssue: undefined } : {}),
+          apiKeyIssue: settings.apiKey ? undefined : current.apiKeyIssue,
         };
         return cache;
       }),
@@ -167,6 +177,7 @@ export function createSettingsStore(storage: SettingsStorage) {
           (!storage.native && (await storage.getKey(false)) !== null)
         )
           throw new Error("Não consegui confirmar a remoção da chave.");
+        await storage.finishMigration?.();
         cache = next;
         return next;
       }),
