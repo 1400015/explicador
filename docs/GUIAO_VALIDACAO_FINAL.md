@@ -8,6 +8,11 @@ O APK debug permite testar uma instalação nova. Para atualizar a app release
 existente é necessário um APK assinado com a keystore original. Não desinstalar
 a app em utilização para contornar a diferença de assinatura: isso apaga dados.
 
+Para testar ao lado de uma instalação existente, usar o APK Tutor IA Teste
+(variante preview, identidade com.tutoria.estudos.preview). Essa app tem dados e
+configuração próprios e deve pedir a chave novamente. Os cenários de atualização
+assinada da app original continuam a usar a variante release.
+
 ## 1. Instalação nova e ligação real
 
 1. Instalar o APK no perfil de teste e abrir sem configurar uma chave. A interface

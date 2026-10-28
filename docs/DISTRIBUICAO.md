@@ -20,6 +20,19 @@ cifragem, IV aleatório, leitura após recriar o cofre, remoção, adulteração
 
 ## Assinatura
 
+Para instalar as funcionalidades num dispositivo onde já existe o Tutor IA,
+compilar a variante separada de teste:
+
+~~~bash
+npm run android:sync
+npm run android:apk:preview
+node scripts/check-apk.mjs android/app/build/outputs/apk/preview/app-preview.apk --preview
+~~~
+
+O nome é Tutor IA Teste e a identidade é com.tutoria.estudos.preview. Os dados
+desta app são separados dos da instalação atual. Configurar a chave e o PIN nas
+suas Definições. O artefacto tutor-ia-teste do CI contém este APK.
+
 A keystore privada original não pertence ao repositório. Uma identidade nova não
 permite atualizar a instalação distribuída.
 

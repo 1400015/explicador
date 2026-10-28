@@ -46,9 +46,14 @@ jobs:
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - run: npm ci
       - run: npm run android:sync
-      - run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
+      - run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :app:assemblePreview
         working-directory: android
       - run: node scripts/check-apk.mjs android/app/build/outputs/apk/debug/app-debug.apk --debug
+      - run: node scripts/check-apk.mjs android/app/build/outputs/apk/preview/app-preview.apk --preview
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tutor-ia-teste
+          path: android/app/build/outputs/apk/preview/app-preview.apk
       - uses: actions/upload-artifact@v4
         with:
           name: tutor-ia-debug

@@ -12,6 +12,7 @@
     "android:sync": "npm run build:static && npx cap sync android",
     "android:open": "npx cap open android",
     "android:apk": "cd android && ./gradlew :app:assembleDebug",
+    "android:apk:preview": "cd android && ./gradlew :app:assemblePreview",
     "android:apk:release": "cd android && ./gradlew :app:assembleRelease",
     "test:integration": "playwright test"
   },

@@ -33,6 +33,11 @@ android {
         }
     }
     buildTypes {
+        preview {
+            initWith debug
+            applicationIdSuffix '.preview'
+            matchingFallbacks = ['debug']
+        }
         release {
             if (signingPresent.size() == signingNames.size()) {
                 signingConfig signingConfigs.release

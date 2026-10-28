@@ -35,6 +35,10 @@ certificado de release preservados. A versão não foi publicada.
 
 ## Compatibilidade e validação
 
+Uma variante Tutor IA Teste, com identidade com.tutoria.estudos.preview, permite
+instalar as funcionalidades ao lado da versão existente. Usa dados/configuração
+próprios. O CI compila e verifica este APK e guarda-o no artefacto tutor-ia-teste.
+
 Atualizar também o backend do modo Servidor. O contrato novo usa clientVersion 3;
 os clientes anteriores continuam a receber respostas simples e o perfil pedagógico
 anterior quando não enviam um perfil. O APK debug não atualiza a app release.

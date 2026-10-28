@@ -154,12 +154,17 @@ Requer JDK 21 completo, Android SDK e ANDROID_HOME.
 
 ~~~bash
 npm run android:sync
-npm run android:apk
-node scripts/check-apk.mjs android/app/build/outputs/apk/debug/app-debug.apk --debug
+npm run android:apk:preview
+node scripts/check-apk.mjs android/app/build/outputs/apk/preview/app-preview.apk --preview
 ~~~
 
-APK debug em android/app/build/outputs/apk/debug/app-debug.apk, para dispositivo ou
-emulador de teste. A assinatura debug não atualiza a app release já distribuída.
-A atualização exige keystore original e a mesma identidade com.tutoria.estudos.
+O APK em android/app/build/outputs/apk/preview/app-preview.apk instala-se como
+**Tutor IA Teste**, com identidade com.tutoria.estudos.preview, ao lado da app
+atual. Tem conversas, PIN e chave próprios: configurar a ligação nas suas Definições.
+
+O debug técnico continua disponível com npm run android:apk e --debug no
+verificador. Usa a identidade original e não atualiza uma release com assinatura
+diferente. Para atualizar a app distribuída, usar a keystore original e a identidade
+com.tutoria.estudos.
 
 Ver [distribuição e validação](docs/DISTRIBUICAO.md).
