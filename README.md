@@ -4,7 +4,7 @@ Tutor de estudos para alunos de cerca de 12 anos, com perguntas guiadas, fotogra
 ditado, leitura e verificação local de cálculos. Next.js + TypeScript para web/PWA
 e Capacitor para Android.
 
-Esta branch prepara a versão **1.3.2**, sobre a estabilização da 1.2.0. Os APKs antigos da raiz são da versão 1.1.5.
+Esta branch prepara a versão **1.3.3**, sobre a estabilização da 1.2.0. Os APKs antigos da raiz são da versão 1.1.5.
 Novos artefactos são produzidos pelo build e pelo workflow de release.
 
 ## Desenvolvimento
@@ -98,6 +98,10 @@ O patch [1.3.1](docs/RELEASE_NOTES_1.3.1.md) restaura a integração com o tecla
 Android para sugestões e correção automática.
 O patch [1.3.2](docs/RELEASE_NOTES_1.3.2.md) conserva os códigos de erro Android
 e mostra uma referência segura no teste de ligação, distinguindo DNS, TLS e timeout.
+O patch [1.3.3](docs/RELEASE_NOTES_1.3.3.md) tenta Gemini 3.6 Flash uma vez após
+erro transitório 500/502/503/504 do Gemini 3.8 Flash. Mantém chave, transporte e
+filtros, com moderação no modelo que respondeu. A espera é cancelável e o prazo
+total do cliente mantém-se. Não repete automaticamente erros de chave ou quota.
 
 ## Configuração
 
@@ -105,8 +109,10 @@ e mostra uma referência segura no teste de ligação, distinguindo DNS, TLS e t
 | --- | --- |
 | GEMINI_API_KEY | Credencial do servidor |
 | GEMINI_MODEL | Modelo do servidor |
+| GEMINI_FALLBACK_MODEL | Modelo alternativo do servidor, após erro transitório |
 | GEMINI_THINKING_LEVEL | LOW, MEDIUM ou HIGH no servidor |
 | NEXT_PUBLIC_GEMINI_MODEL | Modelo direto incorporado no build |
+| NEXT_PUBLIC_GEMINI_FALLBACK_MODEL | Modelo alternativo direto incorporado no build |
 | NEXT_PUBLIC_GEMINI_THINKING_LEVEL | Raciocínio direto incorporado no build |
 | GEMINI_ALLOW_LEGACY_KEYS | Compatibilidade temporária com clientes antigos; por defeito 0 |
 

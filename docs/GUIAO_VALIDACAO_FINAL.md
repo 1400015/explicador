@@ -1,4 +1,4 @@
-# Guião de validação final — Tutor IA 1.3.2
+# Guião de validação final — Tutor IA 1.3.3
 
 Usar um dispositivo ou perfil Android de teste. Registar o modelo, a versão do
 Android, o commit, a versão da app e o resultado de cada cenário. Os registos não
@@ -30,6 +30,10 @@ Resultado esperado: Testar ligação e chat usam o mesmo destino em cada modo.
 No teste, registar a referência segura de erro (versão/modo/categoria ou HTTP),
 sem divulgar a chave. Distinguir DNS, TLS, timeout e erros locais; estes últimos
 não devem abrir o painel que anuncia ausência de internet.
+Confirmar que 503 na geração tenta o modelo alternativo apenas uma vez, respeita
+cancelamento e prazo total e usa esse modelo na moderação. Erros 400/401/403/404,
+quota 429, DNS e TLS não originam essa tentativa. Se ambos falharem, o teste deve
+mostrar os dois modelos/códigos e distinguir UNAVAILABLE de resposta não JSON.
 
 ## 2. Geração e moderação
 

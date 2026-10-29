@@ -1,6 +1,6 @@
 # Distribuição e validação Android
 
-Código 1.3.2, versionCode 11, applicationId com.tutoria.estudos.
+Código 1.3.3, versionCode 12, applicationId com.tutoria.estudos.
 
 ## Compilar
 
