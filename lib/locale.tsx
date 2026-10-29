@@ -121,6 +121,10 @@ const BR_COPY: Record<string, string> = {
     "Preciso de acesso ao microfone. Autorize o acesso. 🎤",
   "Deu erro ao ouvir. Tenta outra vez. 🎤":
     "Ocorreu um erro ao ouvir. Tente novamente. 🎤",
+  "Não consegui ler em voz alta. Verifica o volume e se tens uma voz em português instalada nas definições de texto para voz do telemóvel.":
+    "Não consegui ler em voz alta. Verifique o volume e se há uma voz em português instalada nas configurações de texto para fala do celular.",
+  "Não consegui ler em voz alta. Verifica o volume e as definições de voz do navegador.":
+    "Não consegui ler em voz alta. Verifique o volume e as configurações de voz do navegador.",
   "Fecha as outras janelas desta aplicação antes de atualizar, para conservar o trabalho em curso.":
     "Feche as outras janelas deste aplicativo antes de atualizar para preservar o trabalho em andamento.",
   "Não consegui atualizar. Tenta novamente.":

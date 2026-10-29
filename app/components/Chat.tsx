@@ -307,8 +307,9 @@ export default function Chat() {
       setSpeakingMessageIndex(null);
       return;
     }
+    setError(null);
     setSpeakingMessageIndex(index);
-    speak(text, () => setSpeakingMessageIndex(null), profile.locale);
+    speak(text, () => setSpeakingMessageIndex(null), profile.locale, setError);
   }
   async function handleTakePhoto() {
     if (
