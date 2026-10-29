@@ -10,6 +10,7 @@ import {
 import {
   buildSystemPrompt,
   MODEL,
+  FALLBACK_MODEL,
   THINKING_LEVEL,
   type Subject,
 } from "./prompt";
@@ -45,6 +46,10 @@ import { TutorError, ensureNotAborted } from "./tutor-error";
 export { TutorError } from "./tutor-error";
 import { prepareHistory } from "./history";
 import { moderate, MODERATION_UNAVAILABLE } from "./moderation";
+import {
+  requestWithAvailability,
+  availabilityDiagnostic,
+} from "./gemini-availability";
 import type { LearningProfile } from "./learning-profile";
 import {
   decodeTutorOutput,
@@ -116,12 +121,13 @@ async function moderationCheck(
   client: GoogleGenAI,
   text: string,
   studentAge = 12,
+  model = MODEL,
 ) {
   return moderate(
     text,
     async (prompt, abortSignal) => {
       const res = await client.models.generateContent({
-        model: MODEL,
+        model,
         contents: prompt,
         config: {
           abortSignal,
@@ -181,90 +187,90 @@ export async function askTutorDirect(params: {
     );
   }
 
-  // Android usa HTTP nativo; uma falha não altera o transporte escolhido.
-  let text: string | null = null;
-
-  if (isNativeHttpAvailable()) {
-    try {
-      text = await generateWithNativeHttp({
-        apiKey,
-        message,
-        history,
-        subject,
-        images,
-        profile: params.profile,
-        photoContext: params.photoContext,
-        rememberPhotos: params.rememberPhotos,
-      });
-      if (!text) {
-        return "N\u00e3o consegui ver direito essa foto. Tenta tirar outra com mais luz e mais de perto? \ud83d\udcf8";
-      }
-    } catch (err) {
-      // Preservar status HTTP e o código nativo das falhas de transporte.
-      if (err instanceof TutorError) throw err;
-      const normalized = normalizeNativeError(err);
-      throw new TutorError(
-        friendlyApiError(normalized),
-        classifyApiError(normalized),
-        apiErrorDiagnostic(normalized),
-      );
-    }
-  }
-
+  // A tentativa alternativa mantém Google, chave, transporte e os filtros.
+  const native = isNativeHttpAvailable();
+  let usedModel = MODEL;
   try {
-    if (text === null) {
-      // O browser usa o SDK da Google.
-      const client = getClient(apiKey);
-      const response = await client.models.generateContent({
-        model: MODEL,
-        contents: buildContents(history, message, images, params.photoContext),
-        config: {
-          abortSignal: params.signal,
-          systemInstruction: buildSystemPrompt(
-            subject,
-            params.profile,
-            params.rememberPhotos && images.length > 0,
+    const generated = await requestWithAvailability(
+      async (model) => {
+        usedModel = model;
+        if (native) {
+          try {
+            return await generateWithNativeHttp({
+              apiKey,
+              message,
+              history,
+              subject,
+              images,
+              profile: params.profile,
+              photoContext: params.photoContext,
+              rememberPhotos: params.rememberPhotos,
+              model,
+            });
+          } catch (error) {
+            if (error instanceof TutorError) throw error;
+            throw normalizeNativeError(error);
+          }
+        }
+        const client = getClient(apiKey);
+        const response = await client.models.generateContent({
+          model,
+          contents: buildContents(
+            history,
+            message,
+            images,
+            params.photoContext,
           ),
-          maxOutputTokens: MAX_OUTPUT_TOKENS,
-          ...photoGenerationConfig(params.rememberPhotos ? images.length : 0),
-          thinkingConfig: {
-            thinkingLevel: THINKING_LEVEL as never,
-            includeThoughts: false,
+          config: {
+            abortSignal: params.signal,
+            systemInstruction: buildSystemPrompt(
+              subject,
+              params.profile,
+              params.rememberPhotos && images.length > 0,
+            ),
+            maxOutputTokens: MAX_OUTPUT_TOKENS,
+            ...photoGenerationConfig(params.rememberPhotos ? images.length : 0),
+            thinkingConfig: {
+              thinkingLevel: THINKING_LEVEL as never,
+              includeThoughts: false,
+            },
+            safetySettings: [
+              {
+                category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+              },
+              {
+                category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+              },
+              {
+                category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+              },
+              {
+                category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+              },
+              {
+                category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+              },
+            ],
           },
-          safetySettings: [
-            {
-              category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-              threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            },
-            {
-              category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-              threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            },
-            {
-              category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-              threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
-            },
-            {
-              category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-              threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            },
-            {
-              category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
-              threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            },
-          ],
-        },
-      });
-      const sdkText = response.text ?? null;
-      if (!sdkText) {
-        return "Não consegui ver direito essa foto. Tenta tirar outra com mais luz e mais de perto? 📸";
-      }
-      text = sdkText;
+        });
+        return response.text ?? null;
+      },
+      MODEL,
+      FALLBACK_MODEL,
+      params.signal,
+    );
+    if (!generated) {
+      return "Não consegui ver direito essa foto. Tenta tirar outra com mais luz e mais de perto? 📸";
     }
 
     ensureNotAborted(params.signal);
     const result = decodeTutorOutput(
-      text,
+      generated,
       params.rememberPhotos ? images.length : 0,
     );
     const moderationText =
@@ -279,17 +285,19 @@ export async function askTutorDirect(params: {
           apiKey,
           moderationText,
           (params.profile?.schoolYear ?? 7) + 5,
+          usedModel,
         )
       : await moderationCheck(
           getClient(apiKey),
           moderationText,
           (params.profile?.schoolYear ?? 7) + 5,
+          usedModel,
         );
     if (isSafe === "unavailable")
       throw new TutorError(
         MODERATION_UNAVAILABLE,
         undefined,
-        "MODERATION_UNAVAILABLE",
+        usedModel + ":MODERATION_UNAVAILABLE",
       );
     if (isSafe === "rejected") {
       return SAFE_FALLBACK;
@@ -304,7 +312,8 @@ export async function askTutorDirect(params: {
     throw new TutorError(
       friendlyApiError(error),
       classifyApiError(error),
-      apiErrorDiagnostic(error),
+      availabilityDiagnostic(error) ??
+        usedModel + ":" + apiErrorDiagnostic(error),
     );
   }
 }

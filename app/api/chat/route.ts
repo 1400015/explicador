@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAi, buildSystemPrompt, serverModelConfig } from "@/lib/gemini";
 import { outputIsInappropriate, SAFE_FALLBACK } from "@/lib/safety";
-import { classifyApiError, friendlyApiError } from "@/lib/api-error";
+import {
+  apiErrorDiagnostic,
+  classifyApiError,
+  friendlyApiError,
+} from "@/lib/api-error";
+import {
+  availabilityDiagnostic,
+  requestWithAvailability,
+} from "@/lib/gemini-availability";
 import { ChatRequestError, readChatRequest } from "@/lib/chat-request";
 import { moderate, MODERATION_UNAVAILABLE } from "@/lib/moderation";
 import {
@@ -146,47 +154,58 @@ export async function POST(request: NextRequest) {
     { role: "user", parts: userParts },
   ];
 
+  let usedModel = modelConfig.model;
+  let generationComplete = false;
   try {
-    const response = await client.models.generateContent({
-      model: modelConfig.model,
-      contents,
-      config: {
-        abortSignal: request.signal,
-        systemInstruction: buildSystemPrompt(
-          validSubject,
-          profile,
-          rememberPhotos && newImages.length > 0,
-        ),
-        maxOutputTokens: MAX_OUTPUT_TOKENS,
-        ...photoGenerationConfig(rememberPhotos ? newImages.length : 0),
-        thinkingConfig: {
-          thinkingLevel: modelConfig.thinking as never,
-          includeThoughts: false,
-        },
-        safetySettings: [
-          {
-            category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-            threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    const response = await requestWithAvailability(
+      (model) => {
+        usedModel = model;
+        return client.models.generateContent({
+          model,
+          contents,
+          config: {
+            abortSignal: request.signal,
+            systemInstruction: buildSystemPrompt(
+              validSubject,
+              profile,
+              rememberPhotos && newImages.length > 0,
+            ),
+            maxOutputTokens: MAX_OUTPUT_TOKENS,
+            ...photoGenerationConfig(rememberPhotos ? newImages.length : 0),
+            thinkingConfig: {
+              thinkingLevel: modelConfig.thinking as never,
+              includeThoughts: false,
+            },
+            safetySettings: [
+              {
+                category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+              },
+              {
+                category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+              },
+              {
+                category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+              },
+              {
+                category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+              },
+              {
+                category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+                threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+              },
+            ],
           },
-          {
-            category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-            threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-          },
-          {
-            category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-            threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
-          },
-          {
-            category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-            threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-          },
-          {
-            category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
-            threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-          },
-        ],
+        });
       },
-    });
+      modelConfig.model,
+      modelConfig.fallback,
+      request.signal,
+    );
+    generationComplete = true;
 
     const text = response.text;
 
@@ -215,7 +234,7 @@ export async function POST(request: NextRequest) {
       moderationText,
       async (prompt, abortSignal) => {
         const result = await client.models.generateContent({
-          model: modelConfig.model,
+          model: usedModel,
           contents: prompt,
           config: {
             abortSignal,
@@ -238,8 +257,16 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
+    const diagnostic = generationComplete
+      ? undefined
+      : (availabilityDiagnostic(error) ??
+        `${usedModel}:${apiErrorDiagnostic(error)}`);
+    const reference = diagnostic ? ` Referência: ${diagnostic}.` : "";
     if (error instanceof TutorError)
-      return NextResponse.json({ error: error.message }, { status: 503 });
+      return NextResponse.json(
+        { error: error.message + reference },
+        { status: 503 },
+      );
     console.error("Erro na API do Gemini:", classifyApiError(error));
     // Devolve a causa real (chave invalida, quota, bloqueio, rede) em vez de erro generico.
     const kind = classifyApiError(error);
@@ -253,6 +280,9 @@ export async function POST(request: NextRequest) {
             : kind === "too-large"
               ? 413
               : 500;
-    return NextResponse.json({ error: friendlyApiError(error) }, { status });
+    return NextResponse.json(
+      { error: friendlyApiError(error) + reference },
+      { status },
+    );
   }
 }

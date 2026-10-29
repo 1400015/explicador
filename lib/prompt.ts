@@ -10,6 +10,9 @@ import { PHOTO_INSTRUCTIONS } from "./photo-context";
 export const MODEL = modelName(
   process.env.NEXT_PUBLIC_GEMINI_MODEL || "gemini-3.8-flash",
 );
+export const FALLBACK_MODEL = modelName(
+  process.env.NEXT_PUBLIC_GEMINI_FALLBACK_MODEL || "gemini-3.6-flash",
+);
 export const THINKING_LEVEL = thinkingLevel(
   process.env.NEXT_PUBLIC_GEMINI_THINKING_LEVEL || "HIGH",
 );

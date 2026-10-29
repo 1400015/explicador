@@ -112,6 +112,7 @@ export function apiErrorDiagnostic(error: unknown): string {
   const value = error as {
     status?: unknown;
     error?: { code?: unknown };
+    responseFormat?: unknown;
   } | null;
   const rawStatus = value?.status ?? value?.error?.code;
   if (
@@ -119,8 +120,36 @@ export function apiErrorDiagnostic(error: unknown): string {
     Number.isInteger(rawStatus) &&
     rawStatus >= 100 &&
     rawStatus <= 599
-  )
-    return `HTTP_${rawStatus}`;
+  ) {
+    const jsonStart = message.indexOf("{");
+    const jsonEnd = message.lastIndexOf("}");
+    const body =
+      jsonStart >= 0 && jsonEnd > jsonStart
+        ? parseBody(message.slice(jsonStart, jsonEnd + 1))
+        : null;
+    const state = body?.error?.status;
+    const allowedStates = [
+      "UNAVAILABLE",
+      "DEADLINE_EXCEEDED",
+      "INTERNAL",
+      "INVALID_ARGUMENT",
+      "UNAUTHENTICATED",
+      "PERMISSION_DENIED",
+      "RESOURCE_EXHAUSTED",
+      "NOT_FOUND",
+      "FAILED_PRECONDITION",
+    ];
+    if (
+      body?.error?.code === rawStatus &&
+      typeof state === "string" &&
+      allowedStates.includes(state)
+    )
+      return `HTTP_${rawStatus}_${state}`;
+    return (
+      `HTTP_${rawStatus}` +
+      (value?.responseFormat === "TEXT" ? "_NON_JSON" : "")
+    );
+  }
   const connection = connectionFailure(error);
   if (connection) return connection;
   if (/^(UNIMPLEMENTED|UNAVAILABLE)$/.test(code)) return "PLUGIN_UNAVAILABLE";
@@ -224,7 +253,7 @@ const MESSAGES: Record<ApiErrorKind, string> = {
   blocked:
     "A tua pergunta foi bloqueada pelos filtros de segurança. Tenta perguntar de outra forma, sobre as tuas matérias. 📚",
   overloaded:
-    "O serviço da IA está sobrecarregado ou a demorar demasiado. Espera um bocadinho e tenta de novo. 🔁",
+    "O serviço da IA devolveu um erro e não conseguiu responder. Usa o teste nas Definições para consultar a referência da falha. 🔁",
   "too-large":
     "A tua mensagem com fotos ficou demasiado grande. Tenta com menos fotos ou começa uma conversa nova. 📸",
   network:
