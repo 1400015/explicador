@@ -4,7 +4,7 @@ Tutor de estudos para alunos de cerca de 12 anos, com perguntas guiadas, fotogra
 ditado, leitura e verificação local de cálculos. Next.js + TypeScript para web/PWA
 e Capacitor para Android.
 
-Esta branch prepara a versão **1.3.4**, sobre a estabilização da 1.2.0. Os APKs antigos da raiz são da versão 1.1.5.
+Esta branch prepara a versão **1.3.5**, sobre a estabilização da 1.2.0. Os APKs antigos da raiz são da versão 1.1.5.
 Novos artefactos são produzidos pelo build e pelo workflow de release.
 
 ## Desenvolvimento
@@ -108,6 +108,11 @@ Cancelamento do utilizador não origina uma nova tentativa.
 Em Esta app, **Diagnosticar ligação** envia um pedido curto e fixo à API, sem
 histórico ou fotografias, e mostra apenas confirmação construída pela app.
 **Testar chave** continua a verificar o percurso completo do tutor.
+O patch [1.3.5](docs/RELEASE_NOTES_1.3.5.md) permite escolher, nas Definições em
+Esta app, Flash Latest, Flash Lite Latest, Gemini 3.6 Flash, Gemini 3.8 Flash ou
+Automático. A escolha explícita usa o mesmo modelo em chat, teste e moderação;
+só o modo Automático permite trocar para outro. Tocar em Guardar aplica a escolha
+ao chat. Em Servidor, o modelo é definido pelas variáveis de ambiente do servidor.
 
 ## Configuração
 
@@ -123,7 +128,8 @@ histórico ou fotografias, e mostra apenas confirmação construída pela app.
 | GEMINI_ALLOW_LEGACY_KEYS | Compatibilidade temporária com clientes antigos; por defeito 0 |
 
 Os valores públicos não incluem credenciais. Mudar o modelo direto exige recompilar.
-O pedido HTTP não pode escolher modelo ou endpoint.
+O pedido HTTP ao servidor não pode escolher modelo ou endpoint. A escolha local
+do modo direto é validada por uma lista de opções permitidas.
 
 Numa atualização de servidor com clientes web antigos: manter temporariamente
 GEMINI_ALLOW_LEGACY_KEYS=1, distribuir a interface/PWA nova, confirmar a atualização
