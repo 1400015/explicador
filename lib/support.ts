@@ -3,6 +3,7 @@
  * autolesão ou perigo, a app mostra um banner fixo com contactos de apoio.
  * Não substitui a resposta do tutor — complementa-a.
  */
+import type { Country } from "./learning-profile";
 
 const HELP_PATTERNS = [
   /\b(meus? (colegas?|amigos?|professor[ae]s?) (me )?(batem|zoam|humilham|excluem|gozam))/i,
@@ -44,3 +45,31 @@ export const SUPPORT_RESOURCES = [
     contact: "",
   },
 ];
+
+// Confirmados em 2026-10-28: https://cvv.org.br/ e
+// https://www.gov.br/saude/pt-br/composicao/saes/samu-192
+const BRAZIL_RESOURCES = [
+  {
+    emoji: "🫂",
+    name: "CVV — apoio emocional (Brasil)",
+    detail:
+      "Ligação gratuita, 24 horas. Não substitui os serviços de emergência.",
+    contact: "188 · cvv.org.br",
+  },
+  {
+    emoji: "☎️",
+    name: "SAMU — emergência médica (Brasil)",
+    detail: "Urgência ou emergência médica",
+    contact: "192",
+  },
+  {
+    emoji: "👨‍👩‍👧",
+    name: "Um adulto de confiança",
+    detail:
+      "Pais, professores, familiares — conte a alguém em quem você confia",
+    contact: "",
+  },
+];
+export function supportResources(country: Country) {
+  return country === "BR" ? BRAZIL_RESOURCES : SUPPORT_RESOURCES;
+}

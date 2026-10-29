@@ -47,10 +47,22 @@ export { TutorError } from "./tutor-error";
 import { prepareHistory } from "./history";
 import { moderate, MODERATION_UNAVAILABLE } from "./moderation";
 import {
+  directModelTargets,
+  modelThinking,
+  type DirectModel,
+} from "./model-config";
+import {
   requestWithAvailability,
   availabilityDiagnostic,
   GENERATION_ATTEMPT_TIMEOUT_MS,
 } from "./gemini-availability";
+import type { LearningProfile } from "./learning-profile";
+import {
+  decodeTutorOutput,
+  photoContextPart,
+  photoGenerationConfig,
+  type PhotoContext,
+} from "./photo-context";
 
 const clients = new Map<string, GoogleGenAI>();
 export function clearDirectClients() {
@@ -91,6 +103,7 @@ function buildContents(
   history: ChatMessage[],
   message: string,
   images: ChatImage[],
+  photoContext?: PhotoContext,
 ): Content[] {
   // prepareHistory: so texto, ultimas MAX_HISTORY_MESSAGES, comeca em "user".
   // As imagens do historico nao sao reenviadas (evita pedidos enormes).
@@ -99,7 +112,10 @@ function buildContents(
     parts: [{ text: m.text } as Part],
   }));
 
-  const userParts: Part[] = [{ text: message } as Part];
+  const userParts: Part[] = [
+    ...photoContextPart(photoContext),
+    { text: message } as Part,
+  ];
   for (const img of images) {
     userParts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
   }
@@ -110,21 +126,27 @@ function buildContents(
 async function moderationCheck(
   client: GoogleGenAI,
   text: string,
+  studentAge = 12,
   model = MODEL,
 ) {
-  return moderate(text, async (prompt, abortSignal) => {
-    const res = await client.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        abortSignal,
-        httpOptions: { timeout: 14_000 },
-        thinkingConfig: { thinkingLevel: "LOW" as never },
-        maxOutputTokens: 512,
-      },
-    });
-    return res.text ?? "";
-  });
+  return moderate(
+    text,
+    async (prompt, abortSignal) => {
+      const res = await client.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          abortSignal,
+          httpOptions: { timeout: 14_000 },
+          thinkingConfig: modelThinking(model, "LOW") as never,
+          maxOutputTokens: 512,
+        },
+      });
+      return res.text ?? "";
+    },
+    15_000,
+    studentAge,
+  );
 }
 
 export async function askTutorDirect(params: {
@@ -134,7 +156,12 @@ export async function askTutorDirect(params: {
   subject: Subject;
   images: ChatImage[];
   signal?: AbortSignal;
+  profile?: LearningProfile;
+  photoContext?: PhotoContext;
+  rememberPhotos?: boolean;
+  onPhotoContext?: (context: PhotoContext) => void;
   diagnosticProbe?: boolean;
+  directModel?: DirectModel;
 }): Promise<string> {
   const { apiKey, subject } = params;
   const diagnosticProbe = params.diagnosticProbe === true;
@@ -175,7 +202,8 @@ export async function askTutorDirect(params: {
 
   // A tentativa alternativa mantém Google, chave, transporte e os filtros.
   const native = isNativeHttpAvailable();
-  let usedModel = MODEL;
+  const models = directModelTargets(params.directModel, MODEL, FALLBACK_MODEL);
+  let usedModel = models.model;
   try {
     const generated = await requestWithAvailability(
       async (model, attemptSignal) => {
@@ -188,6 +216,9 @@ export async function askTutorDirect(params: {
               history,
               subject,
               images,
+              profile: params.profile,
+              photoContext: params.photoContext,
+              rememberPhotos: params.rememberPhotos,
               diagnosticProbe,
               model,
             });
@@ -206,10 +237,7 @@ export async function askTutorDirect(params: {
             config: {
               abortSignal: attemptSignal,
               httpOptions: { timeout: GENERATION_ATTEMPT_TIMEOUT_MS },
-              thinkingConfig: {
-                thinkingLevel: "LOW" as never,
-                includeThoughts: false,
-              },
+              thinkingConfig: modelThinking(model, "LOW") as never,
               maxOutputTokens: 256,
             },
           });
@@ -224,16 +252,23 @@ export async function askTutorDirect(params: {
         }
         const response = await client.models.generateContent({
           model,
-          contents: buildContents(history, message, images),
+          contents: buildContents(
+            history,
+            message,
+            images,
+            params.photoContext,
+          ),
           config: {
             abortSignal: attemptSignal,
             httpOptions: { timeout: GENERATION_ATTEMPT_TIMEOUT_MS },
-            systemInstruction: buildSystemPrompt(subject),
+            systemInstruction: buildSystemPrompt(
+              subject,
+              params.profile,
+              params.rememberPhotos && images.length > 0,
+            ),
             maxOutputTokens: MAX_OUTPUT_TOKENS,
-            thinkingConfig: {
-              thinkingLevel: THINKING_LEVEL as never,
-              includeThoughts: false,
-            },
+            ...photoGenerationConfig(params.rememberPhotos ? images.length : 0),
+            thinkingConfig: modelThinking(model, THINKING_LEVEL) as never,
             safetySettings: [
               {
                 category: HarmCategory.HARM_CATEGORY_HARASSMENT,
@@ -260,8 +295,8 @@ export async function askTutorDirect(params: {
         });
         return response.text ?? null;
       },
-      MODEL,
-      FALLBACK_MODEL,
+      models.model,
+      models.fallback,
       params.signal,
     );
     ensureNotAborted(params.signal);
@@ -280,13 +315,30 @@ export async function askTutorDirect(params: {
     }
 
     ensureNotAborted(params.signal);
-    if (outputIsInappropriate(generated)) {
+    const result = decodeTutorOutput(
+      generated,
+      params.rememberPhotos ? images.length : 0,
+    );
+    const moderationText =
+      result.reply +
+      (result.photoContext ? "\n" + JSON.stringify(result.photoContext) : "");
+    if (outputIsInappropriate(moderationText)) {
       return SAFE_FALLBACK;
     }
 
     const isSafe = isNativeHttpAvailable()
-      ? await moderationCheckNativeHttp(apiKey, generated, usedModel)
-      : await moderationCheck(getClient(apiKey), generated, usedModel);
+      ? await moderationCheckNativeHttp(
+          apiKey,
+          moderationText,
+          (params.profile?.schoolYear ?? 7) + 5,
+          usedModel,
+        )
+      : await moderationCheck(
+          getClient(apiKey),
+          moderationText,
+          (params.profile?.schoolYear ?? 7) + 5,
+          usedModel,
+        );
     if (isSafe === "unavailable")
       throw new TutorError(
         MODERATION_UNAVAILABLE,
@@ -298,7 +350,8 @@ export async function askTutorDirect(params: {
     }
 
     ensureNotAborted(params.signal);
-    return generated;
+    if (result.photoContext) params.onPhotoContext?.(result.photoContext);
+    return result.reply;
   } catch (error) {
     if (error instanceof TutorError) throw error;
     // Traduz o erro real (chave invalida, quota, rede, bloqueio) numa mensagem clara.

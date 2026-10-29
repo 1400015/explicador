@@ -1,6 +1,7 @@
 import { SUBJECT_LABELS, type Subject } from "./prompt";
 import { MAX_HISTORY_MESSAGES, type ChatMessage } from "./shared";
 import { needsSupportBanner } from "./support";
+import { readPhotoContext, type PhotoContext } from "./photo-context";
 
 export type StoredMessage = ChatMessage;
 export type Conversation = {
@@ -9,6 +10,7 @@ export type Conversation = {
   updatedAt: number;
   messages: ChatMessage[];
   supportNeeded?: boolean;
+  photoContext?: PhotoContext;
 };
 export type ConversationState = {
   version: 2;
@@ -79,6 +81,7 @@ function conversationsOf(raw: unknown): Conversation[] {
       subject: subjectOf(c.subject),
       updatedAt: c.updatedAt,
       messages,
+      photoContext: readPhotoContext(c.photoContext) ?? undefined,
       supportNeeded:
         c.supportNeeded === true ||
         messages.some((m) => m.role === "user" && needsSupportBanner(m.text)),
@@ -301,6 +304,7 @@ export function createConversationStore(storage: ConversationStorage) {
       id: string | null,
       messages: ChatMessage[],
       create = false,
+      photoContext?: PhotoContext | null,
     ): Promise<string | null> {
       const nextId = id ?? newId();
       await mutate((s) => {
@@ -310,6 +314,10 @@ export function createConversationStore(storage: ConversationStorage) {
           id: nextId,
           subject: s.subject,
           updatedAt: Date.now(),
+          photoContext:
+            photoContext === undefined
+              ? previous?.photoContext
+              : (readPhotoContext(photoContext) ?? undefined),
           messages: [...(previous?.messages ?? []), ...messages].slice(
             -MAX_HISTORY_MESSAGES,
           ),

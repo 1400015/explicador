@@ -64,5 +64,5 @@ jobs:
           set -euo pipefail
           version="$(node -p 'require("./package.json").version')"
           gh release create "v$version" --draft --target "$GITHUB_SHA" \
-            --title "Tutor IA $version" --notes-file docs/RELEASE_NOTES_1.2.0.md \
+            --title "Tutor IA $version" --notes-file "docs/RELEASE_NOTES_${version}.md" \
             artifacts/tutor-ia-release.apk artifacts/SHA256SUMS

@@ -13,7 +13,13 @@ import {
 } from "@/lib/gemini-availability";
 import { ChatRequestError, readChatRequest } from "@/lib/chat-request";
 import { moderate, MODERATION_UNAVAILABLE } from "@/lib/moderation";
+import {
+  decodeTutorOutput,
+  photoContextPart,
+  photoGenerationConfig,
+} from "@/lib/photo-context";
 import { TutorError } from "@/lib/tutor-error";
+import { modelThinking } from "@/lib/model-config";
 import {
   MAX_OUTPUT_TOKENS,
   RATE_LIMIT_MAX_REQUESTS,
@@ -106,6 +112,9 @@ export async function POST(request: NextRequest) {
     images: newImages,
     history: chatHistory,
     apiKey,
+    profile,
+    photoContext,
+    rememberPhotos,
   } = input;
   if (apiKey && process.env.GEMINI_ALLOW_LEGACY_KEYS !== "1") {
     return NextResponse.json(
@@ -131,7 +140,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const userParts: Part[] = [{ text: message } as Part];
+  const userParts: Part[] = [
+    ...photoContextPart(photoContext),
+    { text: message } as Part,
+  ];
   for (const img of newImages) {
     userParts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
   }
@@ -156,12 +168,14 @@ export async function POST(request: NextRequest) {
           config: {
             abortSignal: attemptSignal,
             httpOptions: { timeout: GENERATION_ATTEMPT_TIMEOUT_MS },
-            systemInstruction: buildSystemPrompt(validSubject),
+            systemInstruction: buildSystemPrompt(
+              validSubject,
+              profile,
+              rememberPhotos && newImages.length > 0,
+            ),
             maxOutputTokens: MAX_OUTPUT_TOKENS,
-            thinkingConfig: {
-              thinkingLevel: modelConfig.thinking as never,
-              includeThoughts: false,
-            },
+            ...photoGenerationConfig(rememberPhotos ? newImages.length : 0),
+            thinkingConfig: modelThinking(model, modelConfig.thinking) as never,
             safetySettings: [
               {
                 category: HarmCategory.HARM_CATEGORY_HARASSMENT,
@@ -202,26 +216,38 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 2.ª camada: filtro de saída no servidor
-    if (outputIsInappropriate(text)) {
+    const result = decodeTutorOutput(
+      text,
+      rememberPhotos ? newImages.length : 0,
+    );
+    const moderationText =
+      result.reply +
+      (result.photoContext ? "\n" + JSON.stringify(result.photoContext) : "");
+    // A resposta e os enunciados persistidos têm de ser aprovados em conjunto.
+    if (outputIsInappropriate(moderationText)) {
       console.warn("Filtro de saída bloqueou resposta inadequada");
       return NextResponse.json({ reply: SAFE_FALLBACK });
     }
 
     // 3.ª camada: verificação de moderação pela própria IA
-    const isSafe = await moderate(text, async (prompt, abortSignal) => {
-      const result = await client.models.generateContent({
-        model: usedModel,
-        contents: prompt,
-        config: {
-          abortSignal,
-          httpOptions: { timeout: 14_000 },
-          thinkingConfig: { thinkingLevel: "LOW" as never },
-          maxOutputTokens: 512,
-        },
-      });
-      return result.text ?? "";
-    });
+    const isSafe = await moderate(
+      moderationText,
+      async (prompt, abortSignal) => {
+        const result = await client.models.generateContent({
+          model: usedModel,
+          contents: prompt,
+          config: {
+            abortSignal,
+            httpOptions: { timeout: 14_000 },
+            thinkingConfig: modelThinking(usedModel, "LOW") as never,
+            maxOutputTokens: 512,
+          },
+        });
+        return result.text ?? "";
+      },
+      15_000,
+      profile.schoolYear + 5,
+    );
     if (isSafe === "unavailable")
       return NextResponse.json(
         { error: MODERATION_UNAVAILABLE },
@@ -230,7 +256,7 @@ export async function POST(request: NextRequest) {
     if (isSafe === "rejected")
       return NextResponse.json({ reply: SAFE_FALLBACK });
 
-    return NextResponse.json({ reply: text });
+    return NextResponse.json(result);
   } catch (error) {
     const diagnostic = generationComplete
       ? undefined

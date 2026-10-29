@@ -4,7 +4,7 @@ Tutor de estudos para alunos de cerca de 12 anos, com perguntas guiadas, fotogra
 ditado, leitura e verificação local de cálculos. Next.js + TypeScript para web/PWA
 e Capacitor para Android.
 
-O código prepara a versão **1.2.0**. Os APKs antigos da raiz são da versão 1.1.5.
+Esta branch prepara a versão **1.3.6**, sobre a estabilização da 1.2.0. Os APKs antigos da raiz são da versão 1.1.5.
 Novos artefactos são produzidos pelo build e pelo workflow de release.
 
 ## Desenvolvimento
@@ -63,8 +63,66 @@ moderação integral da resposta. Apenas um resultado estrito aprova o texto ger
 Falha ou timeout do moderador não apresenta nem guarda a resposta e permite repetir.
 
 O banner de apoio mantém-se depois da resposta e reativa perante novo pedido de
-ajuda. Contactos de Portugal: SOS Voz Amiga e 112. O contexto pedagógico atual é
-pt-BR; localização e currículo configuráveis são a evolução seguinte.
+ajuda. Contactos de Portugal: SOS Voz Amiga e 112. Nas Definições, os pais escolhem pt-PT/pt-BR, país (Portugal/Brasil), ano escolar e currículo. A voz e os contactos de apoio acompanham essas escolhas.
+
+## Perfil escolar e contexto das fotografias
+
+Em **Definições → Idioma e ensino**, escolher o idioma, o país de estudo, o ano
+escolar e o currículo nacional correspondente ou internacional. O Brasil inclui
+os nove anos do ensino fundamental e os três do ensino médio. O ano é uma
+referência pedagógica; não são pedidos nome ou data de nascimento. Sem perfil
+anterior, a interface adota pt-PT, Portugal e 7.º ano.
+
+A variante aplica-se à interface principal, às respostas, ao ditado e à leitura.
+A voz exata depende das vozes instaladas. Os recursos de apoio seguem o país:
+Portugal mantém SOS Voz Amiga/112; Brasil usa CVV 188 e SAMU 192.
+
+Ao enviar fotografias, o tutor devolve a resposta e um resumo estruturado dos
+exercícios visíveis. Ambos passam pela moderação antes de aparecerem ou serem
+guardados. O painel **Enunciados das últimas fotografias** permite consultar a
+transcrição. Nas perguntas seguintes, incluindo Não entendi, a app envia esse
+contexto textual; as imagens anteriores não são reenviadas.
+
+Só o último grupo de fotografias é conservado como contexto: até quatro imagens,
+oito enunciados e 5000 caracteres de contexto. Uma nova fotografia substitui esse
+contexto depois de uma resposta aprovada; uma leitura sem enunciados legíveis
+retira o contexto anterior. Limpar/apagar a conversa elimina também o resumo.
+As imagens continuam temporárias e não entram no armazenamento das conversas.
+
+O modo Servidor exige também atualizar o backend para suportar o novo perfil e
+a memória das fotografias. Pedidos de clientes anteriores continuam compatíveis,
+com o contexto pedagógico antigo. Nenhum campo permite escolher modelo ou endpoint.
+
+Ver [notas 1.3.0](docs/RELEASE_NOTES_1.3.0.md).
+O patch [1.3.1](docs/RELEASE_NOTES_1.3.1.md) restaura a integração com o teclado
+Android para sugestões e correção automática.
+O patch [1.3.2](docs/RELEASE_NOTES_1.3.2.md) conserva os códigos de erro Android
+e mostra uma referência segura no teste de ligação, distinguindo DNS, TLS e timeout.
+O patch [1.3.3](docs/RELEASE_NOTES_1.3.3.md) tenta Gemini 3.6 Flash uma vez após
+erro transitório 500/502/503/504 do Gemini 3.8 Flash. Mantém chave, transporte e
+filtros, com moderação no modelo que respondeu. A espera é cancelável e o prazo
+total do cliente mantém-se. Não repete automaticamente erros de chave ou quota.
+O patch [1.3.4](docs/RELEASE_NOTES_1.3.4.md) permite a alternativa após timeout
+real, com limites por tentativa e raciocínio LOW por defeito para reduzir latência.
+Cancelamento do utilizador não origina uma nova tentativa.
+Em Esta app, **Diagnosticar ligação** envia um pedido curto e fixo à API, sem
+histórico ou fotografias, e mostra apenas confirmação construída pela app.
+**Testar chave** continua a verificar o percurso completo do tutor.
+O patch [1.3.5](docs/RELEASE_NOTES_1.3.5.md) permite escolher, nas Definições em
+Esta app, Flash Latest, Flash Lite Latest, Gemini 3.6 Flash, Gemini 3.8 Flash ou
+Automático. A escolha explícita usa o mesmo modelo em chat, teste e moderação;
+só o modo Automático permite trocar para outro. Tocar em Guardar aplica a escolha
+ao chat. Em Servidor, o modelo é definido pelas variáveis de ambiente do servidor.
+
+O patch [1.3.6](docs/RELEASE_NOTES_1.3.6.md) apresenta Markdown e fórmulas
+matemáticas nas respostas, incluindo conversas já guardadas. O texto original
+continua a ser moderado e armazenado. Recursos de apresentação ficam na app.
+Automático começa agora no Gemini 3.6 Flash, com uma única repetição do mesmo
+modelo após erro transitório, por ser a opção confirmada no dispositivo. As
+variáveis de build podem substituir estes valores. Acrescenta Gemini 3.5 Flash
+Lite fixo como escolha manual; os aliases Latest continuam opcionais. O Lite é
+mais barato por token no plano pago, sem garantia de maior quota gratuita nem
+de qualidade pedagógica igual. Ver comparação e fontes nas notas da versão.
 
 ## Configuração
 
@@ -72,13 +130,16 @@ pt-BR; localização e currículo configuráveis são a evolução seguinte.
 | --- | --- |
 | GEMINI_API_KEY | Credencial do servidor |
 | GEMINI_MODEL | Modelo do servidor |
+| GEMINI_FALLBACK_MODEL | Modelo alternativo do servidor, após erro transitório |
 | GEMINI_THINKING_LEVEL | LOW, MEDIUM ou HIGH no servidor |
 | NEXT_PUBLIC_GEMINI_MODEL | Modelo direto incorporado no build |
+| NEXT_PUBLIC_GEMINI_FALLBACK_MODEL | Modelo alternativo direto incorporado no build |
 | NEXT_PUBLIC_GEMINI_THINKING_LEVEL | Raciocínio direto incorporado no build |
 | GEMINI_ALLOW_LEGACY_KEYS | Compatibilidade temporária com clientes antigos; por defeito 0 |
 
 Os valores públicos não incluem credenciais. Mudar o modelo direto exige recompilar.
-O pedido HTTP não pode escolher modelo ou endpoint.
+O pedido HTTP ao servidor não pode escolher modelo ou endpoint. A escolha local
+do modo direto é validada por uma lista de opções permitidas.
 
 Numa atualização de servidor com clientes web antigos: manter temporariamente
 GEMINI_ALLOW_LEGACY_KEYS=1, distribuir a interface/PWA nova, confirmar a atualização
@@ -125,12 +186,17 @@ Requer JDK 21 completo, Android SDK e ANDROID_HOME.
 
 ~~~bash
 npm run android:sync
-npm run android:apk
-node scripts/check-apk.mjs android/app/build/outputs/apk/debug/app-debug.apk --debug
+npm run android:apk:preview
+node scripts/check-apk.mjs android/app/build/outputs/apk/preview/app-preview.apk --preview
 ~~~
 
-APK debug em android/app/build/outputs/apk/debug/app-debug.apk, para dispositivo ou
-emulador de teste. A assinatura debug não atualiza a app release já distribuída.
-A atualização exige keystore original e a mesma identidade com.tutoria.estudos.
+O APK em android/app/build/outputs/apk/preview/app-preview.apk instala-se como
+**Tutor IA Teste**, com identidade com.tutoria.estudos.preview, ao lado da app
+atual. Tem conversas, PIN e chave próprios: configurar a ligação nas suas Definições.
+
+O debug técnico continua disponível com npm run android:apk e --debug no
+verificador. Usa a identidade original e não atualiza uma release com assinatura
+diferente. Para atualizar a app distribuída, usar a keystore original e a identidade
+com.tutoria.estudos.
 
 Ver [distribuição e validação](docs/DISTRIBUICAO.md).

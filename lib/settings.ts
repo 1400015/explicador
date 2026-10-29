@@ -5,6 +5,7 @@ import { registerPlugin } from "@capacitor/core";
 import { clearDirectClients } from "./gemini-client";
 import { createSettingsStore } from "./settings-store";
 export type { AppSettings } from "./settings-store";
+export { DEFAULT_SETTINGS } from "./settings-store";
 export type TutorMode = "server" | "direct";
 
 export const SETTINGS_KEY = "tutor-ia-settings-v1";

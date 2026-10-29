@@ -26,6 +26,24 @@ globalThis.fetch = async function (input, init) {
     answer = "SEM_APROVACAO: texto que não pode chegar ao aluno.";
   else if (text.includes("simular texto longo"))
     answer = "x".repeat(2100) + "FINAL_REPROVAR";
+  if (
+    !moderation &&
+    body.generationConfig?.responseMimeType === "application/json"
+  ) {
+    answer = JSON.stringify({
+      reply: answer,
+      photoContext: {
+        summary: "Enunciado simulado de estudo.",
+        exercises: [
+          {
+            photo: 1,
+            label: "Exercício 1",
+            statement: "Explica como estudar este exercício.",
+          },
+        ],
+      },
+    });
+  }
   return Response.json({
     candidates: [
       {

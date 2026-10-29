@@ -3,6 +3,10 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 const filename = process.argv[2];
 if (!filename) throw new Error("Indica o APK a verificar.");
+const preview = process.argv.includes("--preview");
+const debug = process.argv.includes("--debug");
+if (preview && debug) throw new Error("Escolhe --preview ou --debug.");
+const applicationId = "com.tutoria.estudos" + (preview ? ".preview" : "");
 const buildTools = path.join(
   process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || "",
   "build-tools",
@@ -14,12 +18,19 @@ const metadata = execFileSync(
   { encoding: "utf8" },
 );
 const version = JSON.parse(await readFile("package.json", "utf8")).version;
+const gradle = await readFile("android/app/build.gradle", "utf8");
+const versionCode = gradle.match(/versionCode\s+(\d+)/)?.[1];
+if (!versionCode) throw new Error("versionCode Android não encontrado.");
 if (
-  !metadata.includes("name='com.tutoria.estudos'") ||
-  !metadata.includes("versionCode='8'") ||
+  !metadata.includes("name='" + applicationId + "'") ||
+  !metadata.includes("versionCode='" + versionCode + "'") ||
   !metadata.includes("versionName='" + version + "'")
 )
   throw new Error("Identidade ou versão do APK incorreta.");
+if (preview && !metadata.includes("application-label:'Tutor IA Teste'"))
+  throw new Error(
+    "O APK de instalação separada não tem o nome Tutor IA Teste.",
+  );
 const certificate = execFileSync(
   path.join(buildTools, "apksigner"),
   ["verify", "--print-certs", filename],
@@ -29,7 +40,7 @@ const digest = certificate
   .match(/certificate SHA-256 digest: ([a-f0-9]+)/i)?.[1]
   ?.toLowerCase();
 if (!digest) throw new Error("Não foi possível verificar a assinatura.");
-if (!process.argv.includes("--debug")) {
+if (!debug && !preview) {
   const expected = (
     await readFile("android/release-certificate.sha256", "utf8")
   ).trim();
@@ -38,5 +49,9 @@ if (!process.argv.includes("--debug")) {
 }
 console.log(
   "APK verificado: identidade, versão e assinatura" +
-    (process.argv.includes("--debug") ? " de teste." : " original."),
+    (preview
+      ? " de teste, com instalação separada."
+      : debug
+        ? " de teste."
+        : " original."),
 );

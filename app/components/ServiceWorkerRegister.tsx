@@ -2,8 +2,10 @@
 import { useEffect, useRef, useState } from "react";
 import { isNativeApp } from "@/lib/settings";
 import { useUpdateBlocked } from "@/lib/update-state";
+import { useLocale } from "@/lib/locale";
 
 export default function ServiceWorkerRegister() {
+  const { t } = useLocale();
   const [waiting, setWaiting] = useState<ServiceWorker | null>(null);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState("");
@@ -70,14 +72,16 @@ export default function ServiceWorkerRegister() {
   if (!waiting) return null;
   return (
     <aside
-      aria-label="Atualização da aplicação"
+      aria-label={t("Atualização da aplicação")}
       className="flex shrink-0 flex-wrap items-center justify-center gap-2 bg-indigo-900 px-3 py-2 text-sm text-white"
     >
       <p>
-        Há uma atualização disponível.{" "}
-        {blocked
-          ? "Conclui a ação em curso ou remove as fotos antes de atualizar."
-          : "A pergunta escrita fica guardada nesta sessão."}
+        {t("Há uma atualização disponível.")}{" "}
+        {t(
+          blocked
+            ? "Conclui a ação em curso ou remove as fotos antes de atualizar."
+            : "A pergunta escrita fica guardada nesta sessão.",
+        )}
       </p>
       <button
         disabled={blocked || updating}
@@ -95,9 +99,9 @@ export default function ServiceWorkerRegister() {
           }
         }}
       >
-        {updating ? "A atualizar…" : "Atualizar"}
+        {t(updating ? "A atualizar…" : "Atualizar")}
       </button>
-      {error && <p role="alert">{error}</p>}
+      {error && <p role="alert">{t(error)}</p>}
     </aside>
   );
 }
