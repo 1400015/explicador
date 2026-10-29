@@ -24,14 +24,18 @@ export default function OfflineTips({
       </div>
       <ul className="mt-2 space-y-1.5">
         {getOfflineTips(subject).map((tip, i) => (
-          <li key={i} className="flex gap-2 text-xs leading-relaxed text-sky-900">
+          <li
+            key={i}
+            className="flex gap-2 text-xs leading-relaxed text-sky-900"
+          >
             <span className="font-bold text-sky-600">{i + 1}.</span>
             <span>{tip}</span>
           </li>
         ))}
       </ul>
       <p className="mt-2 text-[11px] text-sky-700">
-        A tua pergunta fica no histórico — tenta enviar outra vez quando tiveres rede. 📶
+        A tua pergunta mantém-se no campo de escrita — tenta enviar outra vez
+        quando tiveres rede. 📶
       </p>
     </div>
   );

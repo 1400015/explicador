@@ -1,7 +1,16 @@
-export const MODEL = "gemini-3.8-flash";
-export const THINKING_LEVEL = "HIGH" as const;
+import { modelName, thinkingLevel } from "./model-config";
+export const MODEL = modelName(
+  process.env.NEXT_PUBLIC_GEMINI_MODEL || "gemini-3.8-flash",
+);
+export const FALLBACK_MODEL = modelName(
+  process.env.NEXT_PUBLIC_GEMINI_FALLBACK_MODEL || "gemini-3.6-flash",
+);
+export const THINKING_LEVEL = thinkingLevel(
+  process.env.NEXT_PUBLIC_GEMINI_THINKING_LEVEL || "LOW",
+);
 
-export type Subject = "matematica" | "ciencias" | "portugues" | "historia" | "geografia" | "geral";
+export type Subject =
+  "matematica" | "ciencias" | "portugues" | "historia" | "geografia" | "geral";
 
 export const SUBJECT_LABELS: Record<Subject, string> = {
   matematica: "Matem\u00e1tica",

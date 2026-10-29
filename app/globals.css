@@ -24,3 +24,12 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Conteúdo longo e diálogos não devem alargar o ecrã do telemóvel. */
+html,
+body {
+  min-width: 0;
+}
+dialog {
+  max-width: calc(100vw - 1.5rem);
+}

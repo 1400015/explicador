@@ -32,6 +32,14 @@ const VALID_KEY = "AIza" + "A1".repeat(17) + "B"; // AIza + 35 chars válidos (f
 const VALID_KEY_AQ = "AQ.Ab" + "x9".repeat(40); // Auth key nova (formato AQ. desde 2026)
 
 async function main() {
+  // Ambiente de armazenamento realista, isolado deste processo de testes.
+  const values = new Map<string, string>();
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, value: {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); },
+    removeItem: (key: string) => { values.delete(key); },
+  } });
+
   console.log("== safety.ts ==");
   ok("chave válida passa no padrão", GEMINI_KEY_PATTERN.test(VALID_KEY));
   ok("chave nova AQ. passa no padrão", GEMINI_KEY_PATTERN.test(VALID_KEY_AQ));
@@ -65,7 +73,7 @@ async function main() {
     ok(`prompt de ${subject} pede português`, p.toLowerCase().includes("português"));
   }
   ok("modelo é o Gemini 3.8 Flash", MODEL === "gemini-3.8-flash");
-  ok("nível de raciocínio é HIGH", THINKING_LEVEL === "HIGH");
+  ok("nível de raciocínio interativo é LOW", THINKING_LEVEL === "LOW");
 
   console.log("== gemini-client.ts (validações locais, sem rede) ==");
   await expectTutorError(
@@ -302,7 +310,7 @@ async function main() {
   })());
   ok("socket hang up -> network", classifyApiError(new Error("socket hang up")) === "network");
   ok("msg too-large menciona fotos", friendlyApiError(sdkErr(413, { error: { code: 413 } })).includes("fotos"));
-  ok("msg overloaded menciona esperar", friendlyApiError(sdkErr(503, { error: { code: 503 } })).toLowerCase().includes("espera"));
+  ok("msg overloaded aponta para referência", friendlyApiError(sdkErr(503, { error: { code: 503 } })).toLowerCase().includes("referência"));
   ok("msg network menciona Wi-Fi", friendlyApiError(new TypeError("Failed to fetch")).includes("Wi-Fi"));
 
   console.log(`\n✅ Todos os ${passed} testes passaram.`);

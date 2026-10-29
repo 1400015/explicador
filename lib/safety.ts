@@ -1,6 +1,6 @@
 const BLOCKED_TOPICS = [
   /\b(como (fazer|criar|montar)\b.{0,40}(bomba|arma|explosivo|drogas? ilegais))/i,
-  /\b(receita de|como sintetizar)\b/i,
+  /\b(receita de|como sintetizar)\b.{0,40}\b(coca[íi]na|metanfetamina|drogas? ilegais|explosivos?)\b/i,
   /\b(conte\u00fado sexual expl\u00edcito|pornografia)\b/i,
 ];
 
@@ -10,7 +10,7 @@ export function containsBlockedContent(text: string): boolean {
 
 const OUTPUT_BLOCKED_PATTERNS = [
   /\b(como (fazer|criar|montar)\b.{0,40}(bomba|arma|explosivo|drogas? ilegais))/i,
-  /\b(receita de|como sintetizar)\b/i,
+  /\b(receita de|como sintetizar)\b.{0,40}\b(coca[íi]na|metanfetamina|drogas? ilegais|explosivos?)\b/i,
   /\b(conte\u00fado sexual expl\u00edcito|pornografia|como fazer sexo|fazer sexo|vamos transar|quero transar|vou te comer|linguagem sexual expl\u00edcita)\b/i,
   /\b(sexo|rela\u00e7\u00f5es sexuais|ato sexual)\b.{0,30}\b(comigo|contigo|com uma crian\u00e7a|pra mim)\b/i,
   // Automutila\u00e7\u00e3o / suic\u00eddio: instru\u00e7\u00f5es ou incentivo direto (n\u00e3o apenas men\u00e7\u00e3o do tema em contexto escolar)
@@ -37,4 +37,5 @@ export const SAFE_FALLBACK =
 // A Google mudou o formato das chaves em 2026: além das "Standard keys" antigas
 // (AIza + 35 caracteres), o AI Studio emite "Auth keys" novas no formato AQ.Ab...
 // Ambas funcionam no endpoint nativo da Gemini (x-goog-api-key). Aceitamos as duas.
-export const GEMINI_KEY_PATTERN = /^(AIza[0-9A-Za-z_-]{35}|AQ\.[0-9A-Za-z._-]{10,500})$/;
+export const GEMINI_KEY_PATTERN =
+  /^(AIza[0-9A-Za-z_-]{35}|AQ\.[0-9A-Za-z._-]{10,500})$/;

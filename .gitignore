@@ -54,3 +54,13 @@ out/
 
 # assinaturas locais do apksigner (não publicar)
 *.idsig
+
+# Playwright
+/test-results/
+/playwright-report/
+
+# Service worker gerado pelo build
+/public/sw.js
+/public/sw.js.tmp
+
+/artifacts/
