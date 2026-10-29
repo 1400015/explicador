@@ -108,6 +108,31 @@ export async function listenOnce(
 }
 
 let speaking = false;
+let speechGeneration = 0;
+let nativeControl = Promise.resolve();
+
+const NATIVE_SPEECH_ERROR =
+  "Não consegui ler em voz alta. Verifica o volume e se tens uma voz em português instalada nas definições de texto para voz do telemóvel.";
+const WEB_SPEECH_ERROR =
+  "Não consegui ler em voz alta. Verifica o volume e as definições de voz do navegador.";
+
+// O motor de voz Android limita o comprimento de cada pedido. Conserva o texto,
+// preferindo uma pausa entre palavras e sem separar pares de caracteres Unicode.
+function speechChunks(text: string): string[] {
+  const limit = 3000;
+  const chunks: string[] = [];
+  let rest = text.trim();
+  while (rest.length > limit) {
+    let end = rest.lastIndexOf(" ", limit);
+    if (end < limit / 2) end = limit;
+    const code = rest.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) end--;
+    chunks.push(rest.slice(0, end).trim());
+    rest = rest.slice(end).trim();
+  }
+  if (rest) chunks.push(rest);
+  return chunks;
+}
 
 export function isSpeaking(): boolean {
   return speaking;
@@ -118,35 +143,73 @@ export function speak(
   text: string,
   onEnd?: () => void,
   locale: TutorLocale = "pt-BR",
+  onError?: (message: string) => void,
 ): void {
-  if (typeof window === "undefined" || !window.speechSynthesis) {
+  const generation = ++speechGeneration;
+  speaking = true;
+  let finished = false;
+  const finish = (error?: string) => {
+    if (finished || generation !== speechGeneration) return;
+    finished = true;
+    speaking = false;
+    if (error) onError?.(error);
     onEnd?.();
+  };
+
+  if (isCapacitorNative()) {
+    // O plugin é carregado apenas no cliente: o seu módulo acede a window.
+    void (async () => {
+      try {
+        const { TextToSpeech } = await import("@capacitor-community/text-to-speech");
+        await nativeControl;
+        for (const chunk of speechChunks(text)) {
+          if (generation !== speechGeneration) return;
+          await TextToSpeech.speak({ text: chunk, lang: locale });
+        }
+        finish();
+      } catch {
+        finish(NATIVE_SPEECH_ERROR);
+      }
+    })();
     return;
   }
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = locale;
-  const voice = window.speechSynthesis
-    .getVoices()
-    .find((item) => item.lang.toLowerCase() === locale.toLowerCase());
-  if (voice) utterance.voice = voice;
-  utterance.rate = 1;
-  utterance.pitch = 1;
-  speaking = true;
-  utterance.onend = () => {
-    speaking = false;
-    onEnd?.();
-  };
-  utterance.onerror = () => {
-    speaking = false;
-    onEnd?.();
-  };
-  window.speechSynthesis.speak(utterance);
+
+  if (typeof window === "undefined" || !window.speechSynthesis) {
+    finish(WEB_SPEECH_ERROR);
+    return;
+  }
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = locale;
+    const voice = window.speechSynthesis
+      .getVoices()
+      .find((item) => item.lang.toLowerCase() === locale.toLowerCase());
+    if (voice) utterance.voice = voice;
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.onend = () => finish();
+    utterance.onerror = () => finish(WEB_SPEECH_ERROR);
+    window.speechSynthesis.speak(utterance);
+  } catch {
+    finish(WEB_SPEECH_ERROR);
+  }
 }
 
 export function stopSpeaking(): void {
-  if (typeof window !== "undefined" && window.speechSynthesis) {
+  const wasSpeaking = speaking;
+  ++speechGeneration;
+  speaking = false;
+  if (isCapacitorNative() && wasSpeaking) {
+    // Serializa o stop com um eventual novo pedido para que uma paragem
+    // anterior não interrompa a leitura que acabou de ser iniciada.
+    nativeControl = nativeControl
+      .then(async () => {
+        const { TextToSpeech } = await import("@capacitor-community/text-to-speech");
+        await TextToSpeech.stop();
+      })
+      .catch(() => {});
+  } else if (typeof window !== "undefined" && window.speechSynthesis) {
     window.speechSynthesis.cancel();
   }
-  speaking = false;
 }
