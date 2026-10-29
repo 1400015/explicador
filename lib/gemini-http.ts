@@ -20,8 +20,6 @@ import { TutorError } from "./tutor-error";
  * No browser (PWA), CapacitorHttp faz fallback para fetch — continua a funcionar.
  */
 
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
-
 function isNative(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -33,6 +31,7 @@ function isNative(): boolean {
 import { prepareHistory } from "./history";
 export { prepareHistory } from "./history";
 import { moderate } from "./moderation";
+import { modelName } from "./model-config";
 
 export function buildGeminiBody(params: {
   message: string;
@@ -97,9 +96,10 @@ async function callGeminiRaw(
   apiKey: string,
   body: Record<string, unknown>,
   timeout = 55_000,
+  model = MODEL,
 ): Promise<GeminiResponse> {
   const res: HttpResponse = await CapacitorHttp.request({
-    url: ENDPOINT,
+    url: `https://generativelanguage.googleapis.com/v1beta/models/${modelName(model)}:generateContent`,
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -127,10 +127,21 @@ async function callGeminiRaw(
 export function makeApiError(
   status: number,
   data: unknown,
-): Error & { status: number } {
+): Error & { status: number; responseFormat: "JSON" | "TEXT" } {
   const message = typeof data === "string" ? data : JSON.stringify(data);
-  const err = new Error(message) as Error & { status: number };
+  const err = new Error(message) as Error & {
+    status: number;
+    responseFormat: "JSON" | "TEXT";
+  };
   err.status = status;
+  err.responseFormat = "TEXT";
+  try {
+    const parsed: unknown = typeof data === "string" ? JSON.parse(data) : data;
+    if (parsed !== null && typeof parsed === "object")
+      err.responseFormat = "JSON";
+  } catch {
+    // A referência pode indicar texto/HTML, mas nunca apresenta o corpo recebido.
+  }
   return err;
 }
 
@@ -192,9 +203,10 @@ export async function generateWithNativeHttp(params: {
   history: ChatMessage[];
   subject: Subject;
   images: ChatImage[];
+  model?: string;
 }): Promise<string | null> {
   const body = buildGeminiBody(params);
-  const json = await callGeminiRaw(params.apiKey, body);
+  const json = await callGeminiRaw(params.apiKey, body, 55_000, params.model);
 
   if (json.promptFeedback?.blockReason) {
     throw new TutorError(
@@ -209,7 +221,11 @@ export async function generateWithNativeHttp(params: {
   return text;
 }
 
-export async function moderationCheckNativeHttp(apiKey: string, text: string) {
+export async function moderationCheckNativeHttp(
+  apiKey: string,
+  text: string,
+  model = MODEL,
+) {
   return moderate(text, async (prompt) => {
     const json = await callGeminiRaw(
       apiKey,
@@ -221,6 +237,7 @@ export async function moderationCheckNativeHttp(apiKey: string, text: string) {
         },
       },
       14_000,
+      model,
     );
     return (
       json.candidates?.[0]?.content?.parts

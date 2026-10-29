@@ -21,12 +21,14 @@ export function getAi(): GoogleGenAI {
 
 import {
   MODEL as PUBLIC_MODEL,
+  FALLBACK_MODEL as PUBLIC_FALLBACK,
   THINKING_LEVEL as PUBLIC_THINKING,
 } from "./prompt";
 import { modelName, thinkingLevel } from "./model-config";
 export function serverModelConfig() {
   return {
     model: modelName(process.env.GEMINI_MODEL || PUBLIC_MODEL),
+    fallback: modelName(process.env.GEMINI_FALLBACK_MODEL || PUBLIC_FALLBACK),
     thinking: thinkingLevel(
       process.env.GEMINI_THINKING_LEVEL || PUBLIC_THINKING,
     ),

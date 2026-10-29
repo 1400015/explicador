@@ -402,7 +402,7 @@ export default function Chat() {
       if (
         (err instanceof TutorError &&
           err.kind === "network" &&
-          (err.diagnostic === "NETWORK" || err.diagnostic === "DNS")) ||
+          /(?:^|:)(?:NETWORK|DNS)(?:>|$)/.test(err.diagnostic ?? "")) ||
         !navigator.onLine
       )
         setOfflineTipsOpen(true);

@@ -310,7 +310,7 @@ async function main() {
   })());
   ok("socket hang up -> network", classifyApiError(new Error("socket hang up")) === "network");
   ok("msg too-large menciona fotos", friendlyApiError(sdkErr(413, { error: { code: 413 } })).includes("fotos"));
-  ok("msg overloaded menciona esperar", friendlyApiError(sdkErr(503, { error: { code: 503 } })).toLowerCase().includes("espera"));
+  ok("msg overloaded aponta para referência", friendlyApiError(sdkErr(503, { error: { code: 503 } })).toLowerCase().includes("referência"));
   ok("msg network menciona Wi-Fi", friendlyApiError(new TypeError("Failed to fetch")).includes("Wi-Fi"));
 
   console.log(`\n✅ Todos os ${passed} testes passaram.`);
