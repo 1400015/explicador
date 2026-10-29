@@ -1,4 +1,4 @@
-# Guião de validação final — Tutor IA 1.3.3
+# Guião de validação final — Tutor IA 1.3.4
 
 Usar um dispositivo ou perfil Android de teste. Registar o modelo, a versão do
 Android, o commit, a versão da app e o resultado de cada cenário. Os registos não
@@ -34,6 +34,14 @@ Confirmar que 503 na geração tenta o modelo alternativo apenas uma vez, respei
 cancelamento e prazo total e usa esse modelo na moderação. Erros 400/401/403/404,
 quota 429, DNS e TLS não originam essa tentativa. Se ambos falharem, o teste deve
 mostrar os dois modelos/códigos e distinguir UNAVAILABLE de resposta não JSON.
+Confirmar também alternativa após timeout real, sem repetir cancelamento manual
+nem AbortError sem indicação de timeout. Cancelar durante a geração ou a espera
+deve impedir nova tentativa e qualquer gravação tardia. No nativo, só iniciar a
+segunda chamada depois de a primeira terminar/rejeitar; nunca sobrepor por timer.
+No modo Esta app, comparar Diagnosticar ligação (pedido fixo, sem histórico,
+fotografias ou apresentação de texto gerado) com Testar chave (tutor completo).
+Registar o modelo e a referência. Um sucesso do diagnóstico não comprova por si
+só a geração/moderação de perguntas escolares e fotografias.
 
 ## 2. Geração e moderação
 
