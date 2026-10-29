@@ -22,6 +22,7 @@ export type TutorQuestion = {
   onPhotoContext?: (context: PhotoContext) => void;
   profile?: LearningProfile;
   rememberPhotos?: boolean;
+  diagnosticProbe?: boolean;
 };
 
 export function serverEndpoint(value: string, allowLocalHttp = false): string {

@@ -47,7 +47,17 @@ export function buildGeminiBody(params: {
   profile?: LearningProfile;
   photoContext?: PhotoContext;
   rememberPhotos?: boolean;
+  diagnosticProbe?: boolean;
 }): Record<string, unknown> {
+  if (params.diagnosticProbe === true) {
+    return {
+      contents: [{ role: "user", parts: [{ text: "Responde apenas OK." }] }],
+      generationConfig: {
+        maxOutputTokens: 256,
+        thinkingConfig: { thinkingLevel: "LOW", includeThoughts: false },
+      },
+    };
+  }
   const { message, history, subject, images } = params;
 
   const contents = [
@@ -116,7 +126,7 @@ type GeminiResponse = {
 async function callGeminiRaw(
   apiKey: string,
   body: Record<string, unknown>,
-  timeout = 55_000,
+  timeout = 15_000,
   model = MODEL,
 ): Promise<GeminiResponse> {
   const res: HttpResponse = await CapacitorHttp.request({
@@ -127,7 +137,7 @@ async function callGeminiRaw(
       "x-goog-api-key": apiKey,
     },
     data: body,
-    connectTimeout: Math.min(20_000, timeout),
+    connectTimeout: Math.min(5_000, timeout),
     readTimeout: timeout,
     responseType: "json",
     disableRedirects: true,
@@ -227,12 +237,19 @@ export async function generateWithNativeHttp(params: {
   profile?: LearningProfile;
   photoContext?: PhotoContext;
   rememberPhotos?: boolean;
+  diagnosticProbe?: boolean;
   model?: string;
 }): Promise<string | null> {
   const body = buildGeminiBody(params);
-  const json = await callGeminiRaw(params.apiKey, body, 55_000, params.model);
+  const json = await callGeminiRaw(params.apiKey, body, 15_000, params.model);
 
   if (json.promptFeedback?.blockReason) {
+    if (params.diagnosticProbe === true)
+      throw new TutorError(
+        "O serviço bloqueou o pedido simples de diagnóstico.",
+        "blocked",
+        modelName(params.model ?? MODEL) + ":BLOCKED_PROBE",
+      );
     throw new TutorError(
       "A tua pergunta foi bloqueada pelos filtros de segurança. Tenta perguntar de outra forma, sobre as tuas matérias. 📚",
     );
@@ -259,7 +276,7 @@ export async function moderationCheckNativeHttp(
         {
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           generationConfig: {
-            maxOutputTokens: 32,
+            maxOutputTokens: 512,
             thinkingConfig: { thinkingLevel: "LOW", includeThoughts: false },
           },
         },

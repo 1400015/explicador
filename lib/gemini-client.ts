@@ -49,6 +49,7 @@ import { moderate, MODERATION_UNAVAILABLE } from "./moderation";
 import {
   requestWithAvailability,
   availabilityDiagnostic,
+  GENERATION_ATTEMPT_TIMEOUT_MS,
 } from "./gemini-availability";
 import type { LearningProfile } from "./learning-profile";
 import {
@@ -131,8 +132,9 @@ async function moderationCheck(
         contents: prompt,
         config: {
           abortSignal,
+          httpOptions: { timeout: 14_000 },
           thinkingConfig: { thinkingLevel: "LOW" as never },
-          maxOutputTokens: 32,
+          maxOutputTokens: 512,
         },
       });
       return res.text ?? "";
@@ -153,8 +155,13 @@ export async function askTutorDirect(params: {
   photoContext?: PhotoContext;
   rememberPhotos?: boolean;
   onPhotoContext?: (context: PhotoContext) => void;
+  diagnosticProbe?: boolean;
 }): Promise<string> {
-  const { apiKey, message, history, subject, images } = params;
+  const { apiKey, subject } = params;
+  const diagnosticProbe = params.diagnosticProbe === true;
+  const message = diagnosticProbe ? "Responde apenas OK." : params.message;
+  const history = diagnosticProbe ? [] : params.history;
+  const images = diagnosticProbe ? [] : params.images;
 
   if (!GEMINI_KEY_PATTERN.test(apiKey)) {
     throw new TutorError(
@@ -192,7 +199,7 @@ export async function askTutorDirect(params: {
   let usedModel = MODEL;
   try {
     const generated = await requestWithAvailability(
-      async (model) => {
+      async (model, attemptSignal) => {
         usedModel = model;
         if (native) {
           try {
@@ -205,6 +212,7 @@ export async function askTutorDirect(params: {
               profile: params.profile,
               photoContext: params.photoContext,
               rememberPhotos: params.rememberPhotos,
+              diagnosticProbe,
               model,
             });
           } catch (error) {
@@ -213,6 +221,31 @@ export async function askTutorDirect(params: {
           }
         }
         const client = getClient(apiKey);
+        if (diagnosticProbe) {
+          const response = await client.models.generateContent({
+            model,
+            contents: [
+              { role: "user", parts: [{ text: "Responde apenas OK." }] },
+            ],
+            config: {
+              abortSignal: attemptSignal,
+              httpOptions: { timeout: GENERATION_ATTEMPT_TIMEOUT_MS },
+              thinkingConfig: {
+                thinkingLevel: "LOW" as never,
+                includeThoughts: false,
+              },
+              maxOutputTokens: 256,
+            },
+          });
+          if (response.promptFeedback?.blockReason) {
+            throw new TutorError(
+              "O serviço bloqueou o pedido simples de diagnóstico.",
+              "blocked",
+              usedModel + ":BLOCKED_PROBE",
+            );
+          }
+          return response.text ?? null;
+        }
         const response = await client.models.generateContent({
           model,
           contents: buildContents(
@@ -222,7 +255,8 @@ export async function askTutorDirect(params: {
             params.photoContext,
           ),
           config: {
-            abortSignal: params.signal,
+            abortSignal: attemptSignal,
+            httpOptions: { timeout: GENERATION_ATTEMPT_TIMEOUT_MS },
             systemInstruction: buildSystemPrompt(
               subject,
               params.profile,
@@ -264,6 +298,17 @@ export async function askTutorDirect(params: {
       FALLBACK_MODEL,
       params.signal,
     );
+    ensureNotAborted(params.signal);
+    if (diagnosticProbe) {
+      if (!generated?.trim())
+        throw new TutorError(
+          "O serviço não devolveu conteúdo ao pedido simples. Tenta novamente.",
+          undefined,
+          usedModel + ":EMPTY_PROBE",
+        );
+      // O texto do modelo nunca é apresentado nem guardado neste diagnóstico.
+      return `O serviço respondeu ao pedido simples (${usedModel}).`;
+    }
     if (!generated) {
       return "Não consegui ver direito essa foto. Tenta tirar outra com mais luz e mais de perto? 📸";
     }

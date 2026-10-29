@@ -169,20 +169,24 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
       );
     }
   }
-  async function handleTest() {
+  async function handleTest(diagnosticProbe = false) {
+    if (testing || (diagnosticProbe && mode !== "direct")) return;
     setTesting(true);
     setStatus(null);
     try {
       const reply = await askTutor(
         { mode, apiKey, serverUrl, allowLocalHttp, profile },
         {
-          message: "Teste de ligação: responde só OK se me estiveres a ouvir.",
+          message: diagnosticProbe
+            ? "Responde apenas OK."
+            : "Teste de ligação: responde só OK se me estiveres a ouvir.",
           history: [],
           subject: "geral",
           images: [],
+          diagnosticProbe,
         },
       );
-      setStatus("Ligação OK! " + reply.slice(0, 80));
+      setStatus(diagnosticProbe ? reply : "Ligação OK! " + reply.slice(0, 80));
     } catch (error) {
       setStatus(
         (error instanceof TutorError
@@ -636,7 +640,7 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
           {t("Guardar")}
         </button>
         <button
-          onClick={handleTest}
+          onClick={() => void handleTest()}
           disabled={
             testing ||
             (mode === "direct"
@@ -653,6 +657,16 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
                 : "Testar servidor",
           )}
         </button>
+        {mode === "direct" && (
+          <button
+            onClick={() => void handleTest(true)}
+            disabled={testing || !apiKey.trim()}
+            aria-describedby="connection-probe-description"
+            className="rounded-xl bg-indigo-100 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-200 disabled:opacity-50"
+          >
+            {t("Diagnosticar ligação")}
+          </button>
+        )}
         {(mode === "direct" || unlocked.apiKeyIssue) && (
           <button
             onClick={() => requestAction("clear")}
@@ -662,6 +676,15 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
           </button>
         )}
       </div>
+
+      {mode === "direct" && (
+        <p
+          id="connection-probe-description"
+          className="mt-2 text-xs text-gray-500"
+        >
+          {t("Pedido simples à API, sem dados da conversa.")}
+        </p>
+      )}
 
       <div className="mt-6 border-t border-gray-100 pt-4">
         <button

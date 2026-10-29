@@ -24,7 +24,7 @@ export const askTutor = createTutorTransport({
           headers: { "Content-Type": "application/json" },
           data: body,
           connectTimeout: 15_000,
-          readTimeout: 55_000,
+          readTimeout: 58_000,
           responseType: "json",
           disableRedirects: true,
         });
