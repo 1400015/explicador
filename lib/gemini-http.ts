@@ -37,7 +37,7 @@ function isNative(): boolean {
 import { prepareHistory } from "./history";
 export { prepareHistory } from "./history";
 import { moderate } from "./moderation";
-import { modelName } from "./model-config";
+import { modelName, modelThinking } from "./model-config";
 
 export function buildGeminiBody(params: {
   message: string;
@@ -48,13 +48,14 @@ export function buildGeminiBody(params: {
   photoContext?: PhotoContext;
   rememberPhotos?: boolean;
   diagnosticProbe?: boolean;
+  model?: string;
 }): Record<string, unknown> {
   if (params.diagnosticProbe === true) {
     return {
       contents: [{ role: "user", parts: [{ text: "Responde apenas OK." }] }],
       generationConfig: {
         maxOutputTokens: 256,
-        thinkingConfig: { thinkingLevel: "LOW", includeThoughts: false },
+        thinkingConfig: modelThinking(params.model ?? MODEL, "LOW"),
       },
     };
   }
@@ -93,7 +94,7 @@ export function buildGeminiBody(params: {
     generationConfig: {
       maxOutputTokens: MAX_OUTPUT_TOKENS,
       ...photoGenerationConfig(params.rememberPhotos ? images.length : 0),
-      thinkingConfig: { thinkingLevel: THINKING_LEVEL, includeThoughts: false },
+      thinkingConfig: modelThinking(params.model ?? MODEL, THINKING_LEVEL),
     },
     safetySettings: [
       { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
@@ -277,7 +278,7 @@ export async function moderationCheckNativeHttp(
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           generationConfig: {
             maxOutputTokens: 512,
-            thinkingConfig: { thinkingLevel: "LOW", includeThoughts: false },
+            thinkingConfig: modelThinking(model, "LOW"),
           },
         },
         14_000,

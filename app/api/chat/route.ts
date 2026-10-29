@@ -19,6 +19,7 @@ import {
   photoGenerationConfig,
 } from "@/lib/photo-context";
 import { TutorError } from "@/lib/tutor-error";
+import { modelThinking } from "@/lib/model-config";
 import {
   MAX_OUTPUT_TOKENS,
   RATE_LIMIT_MAX_REQUESTS,
@@ -174,10 +175,7 @@ export async function POST(request: NextRequest) {
             ),
             maxOutputTokens: MAX_OUTPUT_TOKENS,
             ...photoGenerationConfig(rememberPhotos ? newImages.length : 0),
-            thinkingConfig: {
-              thinkingLevel: modelConfig.thinking as never,
-              includeThoughts: false,
-            },
+            thinkingConfig: modelThinking(model, modelConfig.thinking) as never,
             safetySettings: [
               {
                 category: HarmCategory.HARM_CATEGORY_HARASSMENT,
@@ -241,7 +239,7 @@ export async function POST(request: NextRequest) {
           config: {
             abortSignal,
             httpOptions: { timeout: 14_000 },
-            thinkingConfig: { thinkingLevel: "LOW" as never },
+            thinkingConfig: modelThinking(usedModel, "LOW") as never,
             maxOutputTokens: 512,
           },
         });

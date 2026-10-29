@@ -47,6 +47,11 @@ export { TutorError } from "./tutor-error";
 import { prepareHistory } from "./history";
 import { moderate, MODERATION_UNAVAILABLE } from "./moderation";
 import {
+  directModelTargets,
+  modelThinking,
+  type DirectModel,
+} from "./model-config";
+import {
   requestWithAvailability,
   availabilityDiagnostic,
   GENERATION_ATTEMPT_TIMEOUT_MS,
@@ -133,7 +138,7 @@ async function moderationCheck(
         config: {
           abortSignal,
           httpOptions: { timeout: 14_000 },
-          thinkingConfig: { thinkingLevel: "LOW" as never },
+          thinkingConfig: modelThinking(model, "LOW") as never,
           maxOutputTokens: 512,
         },
       });
@@ -156,6 +161,7 @@ export async function askTutorDirect(params: {
   rememberPhotos?: boolean;
   onPhotoContext?: (context: PhotoContext) => void;
   diagnosticProbe?: boolean;
+  directModel?: DirectModel;
 }): Promise<string> {
   const { apiKey, subject } = params;
   const diagnosticProbe = params.diagnosticProbe === true;
@@ -196,7 +202,8 @@ export async function askTutorDirect(params: {
 
   // A tentativa alternativa mantém Google, chave, transporte e os filtros.
   const native = isNativeHttpAvailable();
-  let usedModel = MODEL;
+  const models = directModelTargets(params.directModel, MODEL, FALLBACK_MODEL);
+  let usedModel = models.model;
   try {
     const generated = await requestWithAvailability(
       async (model, attemptSignal) => {
@@ -230,10 +237,7 @@ export async function askTutorDirect(params: {
             config: {
               abortSignal: attemptSignal,
               httpOptions: { timeout: GENERATION_ATTEMPT_TIMEOUT_MS },
-              thinkingConfig: {
-                thinkingLevel: "LOW" as never,
-                includeThoughts: false,
-              },
+              thinkingConfig: modelThinking(model, "LOW") as never,
               maxOutputTokens: 256,
             },
           });
@@ -264,10 +268,7 @@ export async function askTutorDirect(params: {
             ),
             maxOutputTokens: MAX_OUTPUT_TOKENS,
             ...photoGenerationConfig(params.rememberPhotos ? images.length : 0),
-            thinkingConfig: {
-              thinkingLevel: THINKING_LEVEL as never,
-              includeThoughts: false,
-            },
+            thinkingConfig: modelThinking(model, THINKING_LEVEL) as never,
             safetySettings: [
               {
                 category: HarmCategory.HARM_CATEGORY_HARASSMENT,
@@ -294,8 +295,8 @@ export async function askTutorDirect(params: {
         });
         return response.text ?? null;
       },
-      MODEL,
-      FALLBACK_MODEL,
+      models.model,
+      models.fallback,
       params.signal,
     );
     ensureNotAborted(params.signal);

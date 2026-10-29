@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { version as appVersion } from "@/package.json";
 import { type Subject, SUBJECT_LABELS } from "@/lib/prompt";
 import { learningProfile, profileDescription } from "@/lib/learning-profile";
 import { LocaleContext, copyFor } from "@/lib/locale";
@@ -92,7 +99,12 @@ export default function Chat() {
     updateDraft(conversationStore.getSnapshot().activeId, value);
   }
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setErrorState] = useState<string | null>(null);
+  const [errorReference, setErrorReference] = useState<string | null>(null);
+  const setError = useCallback((message: string | null, reference?: string) => {
+    setErrorState(message);
+    setErrorReference(reference ?? null);
+  }, []);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const profile = learningProfile(settings.profile);
   const t = copyFor(profile.locale);
@@ -147,7 +159,7 @@ export default function Chat() {
     };
     window.addEventListener("storage", externalSettings);
     return () => window.removeEventListener("storage", externalSettings);
-  }, []);
+  }, [setError]);
 
   useEffect(() => {
     if (
@@ -195,7 +207,7 @@ export default function Chat() {
             : "Não consegui carregar as Definições.",
         ),
       );
-  }, []);
+  }, [setError]);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [active, pendingUser, loading, pendingImages]);
@@ -426,6 +438,9 @@ export default function Chat() {
         err instanceof TutorError
           ? err.message
           : "Não consegui falar com o tutor. Verifica a ligação e tenta de novo.",
+        err instanceof TutorError && err.diagnostic
+          ? `${appVersion}/${settings.mode === "direct" ? "DIRECT" : "SERVER"}/${err.diagnostic}`
+          : undefined,
       );
       if (
         (err instanceof TutorError &&
@@ -704,9 +719,19 @@ export default function Chat() {
           {error && (
             <div
               role="alert"
-              className="self-center rounded-xl bg-red-100 px-4 py-2 text-sm text-red-700"
+              className="max-w-full self-center rounded-xl bg-red-100 px-4 py-2 text-sm text-red-700"
             >
               {t(error)}
+              {errorReference && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer font-medium">
+                    {t("Detalhes para apoio")}
+                  </summary>
+                  <p className="mt-1 select-text break-all font-mono text-xs">
+                    {t("Referência:")} {errorReference}
+                  </p>
+                </details>
+              )}
             </div>
           )}
 

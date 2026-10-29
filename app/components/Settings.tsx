@@ -4,6 +4,7 @@ import { useState } from "react";
 import { TutorError } from "@/lib/tutor-error";
 import { apiErrorDiagnostic, friendlyApiError } from "@/lib/api-error";
 import { version as appVersion } from "@/package.json";
+import { DIRECT_MODEL_OPTIONS, directModelChoice } from "@/lib/model-config";
 import {
   clearApiKey,
   loadSettings,
@@ -54,6 +55,9 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
   const [lockError, setLockError] = useState<string | null>(null);
 
   const [mode, setMode] = useState<TutorMode>(settings.mode);
+  const [directModel, setDirectModel] = useState(() =>
+    directModelChoice(settings.directModel),
+  );
   const [apiKey, setApiKey] = useState(settings.apiKey);
   const [serverUrl, setServerUrl] = useState(settings.serverUrl);
   const [allowLocalHttp, setAllowLocalHttp] = useState(
@@ -65,6 +69,12 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
   const [showKey, setShowKey] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
+  const connectionChanged =
+    mode !== settings.mode ||
+    directModel !== directModelChoice(settings.directModel) ||
+    apiKey.trim() !== settings.apiKey.trim() ||
+    serverUrl.trim() !== settings.serverUrl.trim() ||
+    allowLocalHttp !== (settings.allowLocalHttp === true);
 
   const [confirmPin, setConfirmPin] = useState("");
   const [pendingAction, setPendingAction] = useState<"save" | "clear" | null>(
@@ -138,6 +148,7 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
       const next = await saveSettings({
         ...current,
         mode,
+        directModel,
         apiKey: apiKey.trim(),
         serverUrl: isNativeApp() ? serverUrl.trim() : "",
         allowLocalHttp,
@@ -175,7 +186,7 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
     setStatus(null);
     try {
       const reply = await askTutor(
-        { mode, apiKey, serverUrl, allowLocalHttp, profile },
+        { mode, apiKey, serverUrl, allowLocalHttp, profile, directModel },
         {
           message: diagnosticProbe
             ? "Responde apenas OK."
@@ -186,7 +197,12 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
           diagnosticProbe,
         },
       );
-      setStatus(diagnosticProbe ? reply : "Ligação OK! " + reply.slice(0, 80));
+      setStatus(
+        (diagnosticProbe ? reply : "Ligação OK! " + reply.slice(0, 80)) +
+          (connectionChanged
+            ? " Toca em Guardar para aplicar estas definições ao chat."
+            : ""),
+      );
     } catch (error) {
       setStatus(
         (error instanceof TutorError
@@ -425,6 +441,7 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
       <div className="mb-4 grid grid-cols-2 gap-2">
         <button
           onClick={() => setMode("server")}
+          disabled={testing}
           className={`rounded-xl border-2 p-3 text-left text-sm transition ${
             mode === "server"
               ? "border-indigo-600 bg-indigo-50"
@@ -440,6 +457,7 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
         </button>
         <button
           onClick={() => setMode("direct")}
+          disabled={testing}
           className={`rounded-xl border-2 p-3 text-left text-sm transition ${
             mode === "direct"
               ? "border-indigo-600 bg-indigo-50"
@@ -462,6 +480,32 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
               "✅ No modo “Esta app” não precisas de servidor nenhum — o telemóvel fala diretamente com a IA do Google. Só precisas de internet.",
             )}
           </div>
+          <label
+            htmlFor="direct-model"
+            className="mb-1 block text-sm font-medium text-gray-700"
+          >
+            {t("Modelo de IA")}
+          </label>
+          <select
+            id="direct-model"
+            value={directModel}
+            onChange={(event) =>
+              setDirectModel(directModelChoice(event.target.value))
+            }
+            disabled={testing}
+            className="mb-2 w-full min-w-0 rounded-xl border border-gray-300 px-3 py-2 text-sm"
+          >
+            {DIRECT_MODEL_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {t(option.label)}
+              </option>
+            ))}
+          </select>
+          <p className="mb-4 text-xs text-gray-500">
+            {t(
+              "Latest acompanha as versões escolhidas pela Google. A escolha explícita usa sempre esse modelo no chat e na verificação de segurança. Automático permite tentar um modelo alternativo.",
+            )}
+          </p>
           <label className="mb-1 block text-sm font-medium text-gray-700">
             {t("Chave API do Google Gemini")}
           </label>
@@ -469,6 +513,7 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
             <input
               type={showKey ? "text" : "password"}
               value={apiKey}
+              disabled={testing}
               onChange={(e) => setApiKey(e.target.value)}
               aria-label={t("Chave API do Google Gemini")}
               placeholder={t("AIza... ou AQ.Ab...")}
@@ -524,6 +569,7 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
           <input
             type="url"
             value={serverUrl}
+            disabled={testing}
             onChange={(e) => setServerUrl(e.target.value)}
             aria-label={t("Endereço do servidor")}
             placeholder={t("https://teu-servidor.com")}
@@ -544,6 +590,7 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
             <input
               type="checkbox"
               checked={allowLocalHttp}
+              disabled={testing}
               onChange={(event) => setAllowLocalHttp(event.target.checked)}
             />
             {t(
@@ -568,6 +615,13 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
         <p className="mb-4 text-xs text-gray-500">
           {t(
             "As definições, chaves e conversas locais não participam de backups nem de transferência automática. Numa reinstalação, configura novamente a chave.",
+          )}
+        </p>
+      )}
+      {connectionChanged && (
+        <p role="status" className="mb-3 text-sm text-amber-800">
+          {t(
+            "Alterações de ligação por guardar. O teste usa estes valores; toca em Guardar para os aplicar ao chat.",
           )}
         </p>
       )}
@@ -635,6 +689,7 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
       <div className="flex flex-wrap gap-2">
         <button
           onClick={() => requestAction("save")}
+          disabled={testing}
           className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
         >
           {t("Guardar")}
@@ -670,6 +725,7 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
         {(mode === "direct" || unlocked.apiKeyIssue) && (
           <button
             onClick={() => requestAction("clear")}
+            disabled={testing}
             className="rounded-xl bg-red-100 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-200"
           >
             {t("Apagar chave")}

@@ -4,6 +4,7 @@ import { prepareHistory } from "./history";
 import { TutorError, ensureNotAborted } from "./tutor-error";
 import { learningProfile, type LearningProfile } from "./learning-profile";
 import { readPhotoContext, type PhotoContext } from "./photo-context";
+import { directModelChoice, type DirectModel } from "./model-config";
 
 export type ConnectionSettings = {
   mode: "direct" | "server";
@@ -11,6 +12,7 @@ export type ConnectionSettings = {
   serverUrl: string;
   allowLocalHttp?: boolean;
   profile?: LearningProfile;
+  directModel?: DirectModel;
 };
 export type TutorQuestion = {
   message: string;
@@ -64,7 +66,9 @@ export function serverEndpoint(value: string, allowLocalHttp = false): string {
 export function createTutorTransport(
   deps: {
     native: () => boolean;
-    direct: (question: TutorQuestion & { apiKey: string }) => Promise<string>;
+    direct: (
+      question: TutorQuestion & { apiKey: string; directModel?: DirectModel },
+    ) => Promise<string>;
     server: (
       url: string,
       body: object,
@@ -112,6 +116,7 @@ export function createTutorTransport(
             ...question,
             history: prepareHistory(question.history),
             apiKey: settings.apiKey.trim(),
+            directModel: directModelChoice(settings.directModel),
             signal: controller.signal,
             profile: learningProfile(settings.profile),
             rememberPhotos: true,
