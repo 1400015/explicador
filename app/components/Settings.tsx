@@ -503,7 +503,12 @@ export default function Settings({ settings, onClose, onSaved }: Props) {
           </select>
           <p className="mb-4 text-xs text-gray-500">
             {t(
-              "Latest acompanha as versões escolhidas pela Google. A escolha explícita usa sempre esse modelo no chat e na verificação de segurança. Automático permite tentar um modelo alternativo.",
+              "Automático começa, por defeito, no Gemini 3.6 Flash. Latest acompanha as versões escolhidas pela Google. A escolha explícita usa sempre esse modelo no chat e na verificação de segurança.",
+            )}
+          </p>
+          <p className="mb-4 text-xs text-gray-500">
+            {t(
+              "Flash Lite custa menos por token no plano pago. Os limites gratuitos dependem do projeto Google; um preço menor não garante mais perguntas gratuitas.",
             )}
           </p>
           <label className="mb-1 block text-sm font-medium text-gray-700">

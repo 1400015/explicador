@@ -11,6 +11,7 @@ export function thinkingLevel(value: string): "LOW" | "MEDIUM" | "HIGH" {
 
 export const DIRECT_MODEL_OPTIONS = [
   { value: "auto", label: "Automático" },
+  { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash Lite" },
   { value: "gemini-flash-lite-latest", label: "Flash Lite Latest" },
   { value: "gemini-flash-latest", label: "Flash Latest" },
   { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },

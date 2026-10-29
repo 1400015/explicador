@@ -43,6 +43,7 @@ import OfflineTips from "./OfflineTips";
 import SupportBanner from "./SupportBanner";
 import Settings from "./Settings";
 import ServiceWorkerRegister from "./ServiceWorkerRegister";
+import TutorResponse from "./TutorResponse";
 import { useDraft, saveDraft, updateDraft } from "@/lib/draft";
 import { blockUpdate } from "@/lib/update-state";
 import {
@@ -653,7 +654,7 @@ export default function Chat() {
                   ))}
                 </span>
               )}
-              {m.text}
+              {m.role === "model" ? <TutorResponse text={m.text} /> : m.text}
               {m.role === "model" && (
                 <span className="mt-2 flex items-center gap-3">
                   <button

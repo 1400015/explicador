@@ -1,4 +1,4 @@
-# Guião de validação final — Tutor IA 1.3.5
+# Guião de validação final — Tutor IA 1.3.6
 
 Usar um dispositivo ou perfil Android de teste. Registar o modelo, a versão do
 Android, o commit, a versão da app e o resultado de cada cenário. Os registos não
@@ -43,9 +43,10 @@ fotografias ou apresentação de texto gerado) com Testar chave (tutor completo)
 Registar o modelo e a referência. Um sucesso do diagnóstico não comprova por si
 só a geração/moderação de perguntas escolares e fotografias.
 No seletor Modelo de IA, verificar aliases Flash Latest/Flash Lite Latest e
-modelos fixos 3.6/3.8. Tocar em Guardar, fechar/reabrir a app e confirmar a escolha.
-Escolha explícita só pode repetir o mesmo identificador; Automático conserva o
-alternativo. Chat/teste/moderação devem usar a escolha guardada. Testes antes de
+modelos fixos 3.5 Flash Lite/3.6 Flash/3.8 Flash. Tocar em Guardar, fechar/reabrir a
+app e confirmar a escolha. Escolha explícita só pode repetir o mesmo identificador;
+Automático usa por defeito 3.6 nas duas tentativas, salvo configuração de build.
+Chat/teste/moderação devem usar a escolha guardada. Testes antes de
 Guardar devem indicar alterações pendentes. No chat, abrir Detalhes para apoio
 para recolher a referência da própria falha, sem depender de outro pedido.
 

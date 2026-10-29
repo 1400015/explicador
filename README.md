@@ -4,7 +4,7 @@ Tutor de estudos para alunos de cerca de 12 anos, com perguntas guiadas, fotogra
 ditado, leitura e verificação local de cálculos. Next.js + TypeScript para web/PWA
 e Capacitor para Android.
 
-Esta branch prepara a versão **1.3.5**, sobre a estabilização da 1.2.0. Os APKs antigos da raiz são da versão 1.1.5.
+Esta branch prepara a versão **1.3.6**, sobre a estabilização da 1.2.0. Os APKs antigos da raiz são da versão 1.1.5.
 Novos artefactos são produzidos pelo build e pelo workflow de release.
 
 ## Desenvolvimento
@@ -113,6 +113,16 @@ Esta app, Flash Latest, Flash Lite Latest, Gemini 3.6 Flash, Gemini 3.8 Flash ou
 Automático. A escolha explícita usa o mesmo modelo em chat, teste e moderação;
 só o modo Automático permite trocar para outro. Tocar em Guardar aplica a escolha
 ao chat. Em Servidor, o modelo é definido pelas variáveis de ambiente do servidor.
+
+O patch [1.3.6](docs/RELEASE_NOTES_1.3.6.md) apresenta Markdown e fórmulas
+matemáticas nas respostas, incluindo conversas já guardadas. O texto original
+continua a ser moderado e armazenado. Recursos de apresentação ficam na app.
+Automático começa agora no Gemini 3.6 Flash, com uma única repetição do mesmo
+modelo após erro transitório, por ser a opção confirmada no dispositivo. As
+variáveis de build podem substituir estes valores. Acrescenta Gemini 3.5 Flash
+Lite fixo como escolha manual; os aliases Latest continuam opcionais. O Lite é
+mais barato por token no plano pago, sem garantia de maior quota gratuita nem
+de qualidade pedagógica igual. Ver comparação e fontes nas notas da versão.
 
 ## Configuração
 

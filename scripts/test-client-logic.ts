@@ -72,7 +72,7 @@ async function main() {
     ok(`prompt de ${subject} fala em 12 anos`, p.includes("12 anos"));
     ok(`prompt de ${subject} pede português`, p.toLowerCase().includes("português"));
   }
-  ok("modelo é o Gemini 3.8 Flash", MODEL === "gemini-3.8-flash");
+  ok("modelo por defeito é o Gemini 3.6 Flash", MODEL === "gemini-3.6-flash");
   ok("nível de raciocínio interativo é LOW", THINKING_LEVEL === "LOW");
 
   console.log("== gemini-client.ts (validações locais, sem rede) ==");

@@ -14,6 +14,10 @@ const BR_COPY: Record<string, string> = {
   "Introduz o PIN dos pais para aceder às definições.":
     "Digite o PIN dos responsáveis para acessar as configurações.",
   "Modo de ligação": "Modo de conexão",
+  "Automático começa, por defeito, no Gemini 3.6 Flash. Latest acompanha as versões escolhidas pela Google. A escolha explícita usa sempre esse modelo no chat e na verificação de segurança.":
+    "Automático começa, por padrão, no Gemini 3.6 Flash. Latest acompanha as versões escolhidas pelo Google. A escolha explícita usa sempre esse modelo no chat e na verificação de segurança.",
+  "Flash Lite custa menos por token no plano pago. Os limites gratuitos dependem do projeto Google; um preço menor não garante mais perguntas gratuitas.":
+    "Flash Lite custa menos por token no plano pago. Os limites gratuitos dependem do projeto Google; um preço menor não garante mais perguntas gratuitas.",
   Guardar: "Salvar",
   "Guardar as alterações": "Salvar as alterações",
   "guardar as alterações": "salvar as alterações",

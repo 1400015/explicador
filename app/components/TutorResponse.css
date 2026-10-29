@@ -1,0 +1,150 @@
+.tutor-response {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.tutor-response p {
+  white-space: pre-wrap;
+}
+
+.tutor-response p,
+.tutor-response ul,
+.tutor-response ol,
+.tutor-response blockquote,
+.tutor-response pre,
+.tutor-response hr,
+.tutor-response-table-scroll {
+  margin-block: 0.7em;
+}
+
+.tutor-response > :first-child {
+  margin-top: 0;
+}
+
+.tutor-response > :last-child {
+  margin-bottom: 0;
+}
+
+.tutor-response h1,
+.tutor-response h2,
+.tutor-response h3,
+.tutor-response h4,
+.tutor-response h5,
+.tutor-response h6 {
+  margin-block: 1em 0.4em;
+  font-size: 1.1em;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.tutor-response h1 {
+  font-size: 1.2em;
+}
+
+.tutor-response strong {
+  font-weight: 700;
+}
+
+.tutor-response em {
+  font-style: italic;
+}
+
+.tutor-response ul,
+.tutor-response ol {
+  padding-inline-start: 1.5em;
+}
+
+.tutor-response ul {
+  list-style-type: disc;
+}
+
+.tutor-response ol {
+  list-style-type: decimal;
+}
+
+.tutor-response li + li {
+  margin-top: 0.3em;
+}
+
+.tutor-response li > p {
+  margin-block: 0.3em;
+}
+
+.tutor-response blockquote {
+  border-inline-start: 3px solid #c7d2fe;
+  padding-inline-start: 0.8em;
+  color: #4b5563;
+}
+
+.tutor-response pre {
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: 0.5rem;
+  padding: 0.7em;
+  background: #f3f4f6;
+  white-space: pre;
+  overflow-wrap: normal;
+  font-size: 0.9em;
+}
+
+.tutor-response code {
+  border-radius: 0.2em;
+  padding: 0.1em 0.25em;
+  background: #f3f4f6;
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.tutor-response pre code {
+  padding: 0;
+  background: transparent;
+  font-size: inherit;
+}
+
+.tutor-response hr {
+  border: 0;
+  border-top: 1px solid #d1d5db;
+}
+
+.tutor-response-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.tutor-response table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+.tutor-response th,
+.tutor-response td {
+  min-width: 4em;
+  border: 1px solid #d1d5db;
+  padding: 0.35em 0.5em;
+}
+
+.tutor-response th {
+  background: #eef2ff;
+  font-weight: 700;
+}
+
+.tutor-response .katex {
+  font-size: 1.1em;
+  overflow-wrap: normal;
+  white-space: normal;
+}
+
+.tutor-response .katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-block: 0.2em;
+}
+
+.tutor-response .katex-error {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
