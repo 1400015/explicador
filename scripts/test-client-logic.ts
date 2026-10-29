@@ -73,7 +73,7 @@ async function main() {
     ok(`prompt de ${subject} pede português`, p.toLowerCase().includes("português"));
   }
   ok("modelo é o Gemini 3.8 Flash", MODEL === "gemini-3.8-flash");
-  ok("nível de raciocínio é HIGH", THINKING_LEVEL === "HIGH");
+  ok("nível de raciocínio interativo é LOW", THINKING_LEVEL === "LOW");
 
   console.log("== gemini-client.ts (validações locais, sem rede) ==");
   await expectTutorError(

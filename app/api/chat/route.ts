@@ -9,6 +9,7 @@ import {
 import {
   availabilityDiagnostic,
   requestWithAvailability,
+  GENERATION_ATTEMPT_TIMEOUT_MS,
 } from "@/lib/gemini-availability";
 import { ChatRequestError, readChatRequest } from "@/lib/chat-request";
 import { moderate, MODERATION_UNAVAILABLE } from "@/lib/moderation";
@@ -147,13 +148,14 @@ export async function POST(request: NextRequest) {
   let generationComplete = false;
   try {
     const response = await requestWithAvailability(
-      (model) => {
+      (model, attemptSignal) => {
         usedModel = model;
         return client.models.generateContent({
           model,
           contents,
           config: {
-            abortSignal: request.signal,
+            abortSignal: attemptSignal,
+            httpOptions: { timeout: GENERATION_ATTEMPT_TIMEOUT_MS },
             systemInstruction: buildSystemPrompt(validSubject),
             maxOutputTokens: MAX_OUTPUT_TOKENS,
             thinkingConfig: {
@@ -213,8 +215,9 @@ export async function POST(request: NextRequest) {
         contents: prompt,
         config: {
           abortSignal,
+          httpOptions: { timeout: 14_000 },
           thinkingConfig: { thinkingLevel: "LOW" as never },
-          maxOutputTokens: 32,
+          maxOutputTokens: 512,
         },
       });
       return result.text ?? "";

@@ -15,6 +15,7 @@ export type TutorQuestion = {
   images: ChatImage[];
   history: ChatMessage[];
   signal?: AbortSignal;
+  diagnosticProbe?: boolean;
 };
 
 export function serverEndpoint(value: string, allowLocalHttp = false): string {
